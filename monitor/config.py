@@ -1,0 +1,250 @@
+"""
+Configuration management for the technical blog monitor.
+
+This module uses pydantic-settings to manage all configuration aspects including:
+- Feed sources
+- Browser settings
+- Caching
+- Embedding providers
+- Vector databases
+- Runtime settings
+
+Configuration is loaded from environment variables, .env files, or mounted secrets.
+"""
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urlparse
+
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class LogLevel(str, Enum):
+    """Log levels supported by the application."""
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+class Environment(str, Enum):
+    """Application environment."""
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+class FeedConfig(BaseModel):
+    """Configuration for a single feed source."""
+    name: str
+    url: AnyHttpUrl
+    check_interval_minutes: int = 60
+    max_posts_per_check: int = 10
+    headers: Dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class BrowserConfig(BaseModel):
+    """Configuration for the headless browser."""
+    headless: bool = True
+    browser_type: str = "chromium"  # chromium, firefox, webkit
+    timeout_seconds: int = 30
+    viewport_width: int = 1280
+    viewport_height: int = 800
+    user_agent: Optional[str] = None
+    wait_until: str = "networkidle"  # load, domcontentloaded, networkidle
+    screenshot_full_page: bool = True
+    screenshot_format: str = "png"  # png, jpeg
+    max_concurrent_browsers: int = 3
+    disable_javascript: bool = False
+    block_ads: bool = True
+    stealth_mode: bool = True
+
+
+class CacheConfig(BaseModel):
+    """Configuration for the caching layer."""
+    enabled: bool = True
+    redis_url: Optional[str] = None
+    redis_password: Optional[SecretStr] = None
+    cache_ttl_hours: int = 24 * 7  # 1 week default
+    local_storage_path: Path = Field(default=Path("./cache"))
+    
+    @field_validator("local_storage_path")
+    def validate_local_storage_path(cls, v: Path) -> Path:
+        """Ensure the local storage path exists."""
+        v.mkdir(parents=True, exist_ok=True)
+        return v
+
+
+class EmbeddingModelType(str, Enum):
+    """Types of embedding models supported."""
+    OPENAI = "openai"
+    HUGGINGFACE = "huggingface"
+    SENTENCE_TRANSFORMERS = "sentence_transformers"
+    CUSTOM = "custom"
+
+
+class EmbeddingConfig(BaseModel):
+    """Configuration for embedding generation."""
+    text_model_type: EmbeddingModelType = EmbeddingModelType.OPENAI
+    text_model_name: str = "text-embedding-ada-002"
+    image_model_type: Optional[EmbeddingModelType] = None
+    image_model_name: Optional[str] = None
+    
+    # API credentials
+    openai_api_key: Optional[SecretStr] = None
+    huggingface_api_key: Optional[SecretStr] = None
+    
+    # Model parameters
+    embedding_dimensions: Optional[int] = None
+    batch_size: int = 8
+    max_retries: int = 3
+    timeout_seconds: int = 30
+    
+    # Local model settings
+    local_model_path: Optional[Path] = None
+    use_gpu: bool = False
+    
+    @model_validator(mode='after')
+    def validate_model_config(self) -> 'EmbeddingConfig':
+        """Validate that required credentials are provided for the chosen model type."""
+        if self.text_model_type == EmbeddingModelType.OPENAI and not self.openai_api_key:
+            raise ValueError("OpenAI API key is required when using OpenAI embeddings")
+        if self.text_model_type == EmbeddingModelType.HUGGINGFACE and not self.huggingface_api_key:
+            raise ValueError("HuggingFace API key is required when using HuggingFace embeddings")
+        return self
+
+
+class VectorDBType(str, Enum):
+    """Types of vector databases supported."""
+    QDRANT = "qdrant"
+    CHROMA = "chroma"
+    PINECONE = "pinecone"
+    MILVUS = "milvus"
+    WEAVIATE = "weaviate"
+
+
+class VectorDBConfig(BaseModel):
+    """Configuration for the vector database."""
+    db_type: VectorDBType = VectorDBType.QDRANT
+    connection_string: str = "http://localhost:6333"
+    api_key: Optional[SecretStr] = None
+    collection_name: str = "technical_blog_posts"
+    
+    # Schema configuration
+    text_vector_dimension: int = 1536  # Default for OpenAI ada-002
+    image_vector_dimension: Optional[int] = None
+    distance_metric: str = "cosine"  # cosine, euclidean, dot
+    
+    # Performance settings
+    batch_size: int = 100
+    timeout_seconds: int = 30
+    
+    @field_validator("connection_string")
+    def validate_connection_string(cls, v: str) -> str:
+        """Validate the connection string format."""
+        try:
+            parsed = urlparse(v)
+            if not parsed.scheme or not parsed.netloc:
+                raise ValueError("Invalid URL format")
+        except Exception:
+            raise ValueError(f"Invalid connection string: {v}")
+        return v
+
+
+class SchedulerConfig(BaseModel):
+    """Configuration for the job scheduler."""
+    job_store_type: str = "memory"  # memory, redis, sqlalchemy
+    job_store_url: Optional[str] = None
+    max_instances: int = 1
+    timezone: str = "UTC"
+    coalesce: bool = True
+    misfire_grace_time: int = 60  # seconds
+
+
+class MetricsConfig(BaseModel):
+    """Configuration for metrics and monitoring."""
+    enabled: bool = True
+    prometheus_enabled: bool = False
+    prometheus_port: int = 8000
+    log_metrics: bool = True
+    log_level: LogLevel = LogLevel.INFO
+    structured_logging: bool = True
+
+
+class Settings(BaseSettings):
+    """Main settings class for the technical blog monitor."""
+    # Application metadata
+    app_name: str = "technical-blog-monitor"
+    version: str = "0.1.0"
+    environment: Environment = Environment.DEVELOPMENT
+    debug: bool = Field(default=False)
+    
+    # Base paths
+    base_dir: Path = Field(default_factory=lambda: Path.cwd())
+    data_dir: Path = Field(default_factory=lambda: Path.cwd() / "data")
+    
+    # Feed sources
+    feeds: List[FeedConfig] = Field(default_factory=list)
+    feed_list_url: Optional[AnyHttpUrl] = None  # Optional URL to fetch feed list
+    
+    # Component configurations
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    vector_db: VectorDBConfig = Field(default_factory=VectorDBConfig)
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    
+    # Runtime settings
+    max_concurrent_tasks: int = 10
+    request_timeout_seconds: int = 30
+    backoff_max_retries: int = 5
+    backoff_max_time: int = 60  # seconds
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_nested_delimiter="__",
+        extra="ignore",
+        validate_default=True,
+    )
+    
+    @model_validator(mode='after')
+    def create_directories(self) -> 'Settings':
+        """Ensure required directories exist."""
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        return self
+    
+    @field_validator("feeds")
+    def validate_feeds(cls, feeds: List[FeedConfig]) -> List[FeedConfig]:
+        """Validate that feed names are unique."""
+        feed_names = [feed.name for feed in feeds]
+        if len(feed_names) != len(set(feed_names)):
+            raise ValueError("Feed names must be unique")
+        return feeds
+    
+    def get_feed_by_name(self, name: str) -> Optional[FeedConfig]:
+        """Get a feed configuration by name."""
+        for feed in self.feeds:
+            if feed.name == name:
+                return feed
+        return None
+
+
+def load_settings() -> Settings:
+    """Load settings from environment variables and .env file."""
+    return Settings()
+
+
+# Default instance for easy import
+settings = load_settings()
