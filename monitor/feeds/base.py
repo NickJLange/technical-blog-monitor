@@ -31,6 +31,10 @@ from tenacity import (
 from monitor.config import FeedConfig
 from monitor.models.blog_post import BlogPost
 from monitor.models.cache_entry import CacheEntry, ValueType
+# New imports for full-content capture
+from concurrent.futures import ThreadPoolExecutor
+from monitor.extractor.article_parser import extract_article_content
+from monitor.config import ArticleProcessingConfig
 
 # Set up structured logger
 logger = structlog.get_logger()
@@ -621,3 +625,50 @@ async def process_feed_posts(
             error=str(e),
         )
         return []
+
+# --------------------------------------------------------------------------- #
+# New helper for full-article capture
+# --------------------------------------------------------------------------- #
+
+async def process_individual_article(
+    post: BlogPost,
+    cache_client: CacheClient,
+    browser_pool: BrowserPool,
+) -> BlogPost:
+    """
+    Render the individual article page, capture screenshots, and extract the
+    full cleaned article content.  The resulting information is attached to
+    the BlogPost.metadata for downstream processing (embedding, storage…).
+    """
+    logger.debug("Processing individual article", url=post.url)
+
+    screenshot_path: Optional[str] = None
+    try:
+        # 1. Render & screenshot
+        screenshot_path = await browser_pool.render_and_screenshot(str(post.url))
+
+        # 2. Extract clean content (cpu-bound → thread pool)
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="extractor") as pool:
+            article_content = await extract_article_content(
+                str(post.url),
+                cache_client,
+                pool,
+            )
+
+        # 3. Attach to post metadata
+        post.metadata["article_text"] = article_content.text
+        post.metadata["article_word_count"] = article_content.word_count
+        post.metadata["article_summary"] = article_content.summary
+        post.metadata["article_screenshot"] = screenshot_path
+        post.metadata["article_processed_at"] = datetime.now(timezone.utc).isoformat()
+
+        logger.info("Full article captured", url=post.url, words=article_content.word_count)
+        return post
+
+    except Exception as exc:
+        logger.warning(
+            "Failed to capture full article",
+            url=post.url,
+            error=str(exc),
+        )
+        return post

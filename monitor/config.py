@@ -181,6 +181,67 @@ class MetricsConfig(BaseModel):
     structured_logging: bool = True
 
 
+class ArticleProcessingConfig(BaseModel):
+    """
+    Configuration controlling how individual articles are processed after they
+    are discovered in a feed.
+
+    This allows enabling full-content capture, limiting the amount of work the
+    daemon does per run, as well as toggling optional summarisation / archival
+    features that can be rolled out later without changing code.
+    """
+
+    # --- Core behaviour -------------------------------------------------- #
+    full_content_capture: bool = True
+    """If True the crawler will visit the article URL, render it and extract the
+    complete content (text, images, screenshots).  If False only the feed
+    metadata is stored."""
+
+    max_articles_per_feed: int = 50
+    """Safety-valve: cap how many articles we pull per feed per run to avoid
+    runaway processing (e.g. after long downtime)."""
+
+    concurrent_article_tasks: int = 5
+    """Number of articles that can be processed concurrently (limits CPU/GPU
+    pressure and Playwright browser usage)."""
+
+    # --- Summarisation --------------------------------------------------- #
+    generate_summary: bool = False
+    """Whether to call an LLM or local model to generate an abstractive summary
+    for each article.  Implementation to be wired in later."""
+
+    summary_max_tokens: int = 256
+    """Upper bound on tokens the summariser should return (if enabled)."""
+
+    # --- Archival options ------------------------------------------------ #
+    archive_html: bool = True
+    """Persist the cleaned article HTML to cache / disk for long-term storage."""
+
+    archive_screenshots: bool = True
+    """Persist Playwright screenshots of the rendered article."""
+
+    archive_raw: bool = False
+    """If True store the raw HTTP response body as well."""
+
+    screenshot_strategy: str = "full"  # full, viewport, none
+
+    @model_validator(mode="after")
+    def _sanity_checks(self) -> "ArticleProcessingConfig":
+        """Basic sanity checks to keep misconfigurations from blowing up."""
+        if self.max_articles_per_feed <= 0:
+            raise ValueError("max_articles_per_feed must be positive")
+        if not self.full_content_capture and (
+            self.archive_html or self.archive_screenshots or self.archive_raw
+        ):
+            # Archival makes no sense if we are not capturing the page.
+            raise ValueError(
+                "Archival options require full_content_capture=True"
+            )
+        if self.concurrent_article_tasks <= 0:
+            raise ValueError("concurrent_article_tasks must be positive")
+        return self
+
+
 class Settings(BaseSettings):
     """Main settings class for the technical blog monitor."""
     # Application metadata
@@ -202,6 +263,8 @@ class Settings(BaseSettings):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     vector_db: VectorDBConfig = Field(default_factory=VectorDBConfig)
+    # Article processing (full-content capture, summarisation, archival…)
+    article_processing: ArticleProcessingConfig = Field(default_factory=ArticleProcessingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     

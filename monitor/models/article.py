@@ -33,6 +33,10 @@ class ArticleContent(BaseModel):
     summary: Optional[str] = None
     word_count: int
     image_urls: List[str] = Field(default_factory=list)
+    # Local filesystem paths to screenshots (full-page or key sections) captured
+    # when the article was rendered in a headless browser.  Multiple screenshots
+    # are supported to accommodate very long articles.
+    screenshot_paths: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
@@ -63,6 +67,12 @@ class ArticleContent(BaseModel):
         """Normalize image URLs and remove duplicates."""
         # Remove empty URLs and duplicates
         return list(set(url.strip() for url in v if url.strip()))
+    
+    @field_validator("screenshot_paths")
+    @classmethod
+    def normalize_screenshot_paths(cls, v: List[str]) -> List[str]:
+        """Normalize screenshot paths and remove duplicates / empties."""
+        return sorted({path.strip() for path in v if path.strip()})
     
     @model_validator(mode='after')
     def calculate_reading_time(self) -> 'ArticleContent':

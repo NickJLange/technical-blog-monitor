@@ -238,6 +238,31 @@ async def process_feed(app_context: AppContext, feed_name: str) -> None:
             return
         
         logger.info("Found new posts", feed_name=feed_name, count=len(new_posts))
+
+        # ------------------------------------------------------------------
+        # Optional full-article capture (text, screenshots, etc.)
+        # ------------------------------------------------------------------
+        if app_context.settings.article_processing.full_content_capture:
+            from monitor.feeds.base import process_individual_article
+
+            conc = app_context.settings.article_processing.concurrent_article_tasks
+            sem_capture = asyncio.Semaphore(conc)
+
+            async def _capture(post):
+                async with sem_capture:
+                    return await process_individual_article(
+                        post,
+                        app_context.cache_client,
+                        app_context.browser_pool,
+                    )
+
+            # Capture articles concurrently (bounded by semaphore)
+            new_posts = await asyncio.gather(*[_capture(p) for p in new_posts])
+            logger.info(
+                "Full article capture complete",
+                feed_name=feed_name,
+                processed=len(new_posts),
+            )
         
         # Process each post in parallel with a semaphore to limit concurrency
         semaphore = asyncio.Semaphore(app_context.settings.max_concurrent_tasks)
