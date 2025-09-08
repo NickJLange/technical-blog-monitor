@@ -285,7 +285,7 @@ class JSONFeedProcessor(FeedProcessor):
                     entry_id = url
                 
                 import hashlib
-                post_id = hashlib.md5(f"{self.name}:{entry_id}".encode()).hexdigest()
+                post_id = hashlib.sha256(f"{self.name}:{entry_id}".encode()).hexdigest()
                 
                 # Author
                 author = self._get_nested_value(entry, [

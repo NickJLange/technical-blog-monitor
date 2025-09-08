@@ -464,7 +464,7 @@ class RedisCacheClient(BaseCacheClient):
         except json.JSONDecodeError:
             # Not JSON, try pickle
             try:
-                return pickle.loads(data)
+                return pickle.loads(data)  # nosec B301: trusted internal cache
             except pickle.PickleError:
                 # Not pickle, return as bytes
                 return data

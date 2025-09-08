@@ -10,3 +10,6 @@ https://slack.engineering/
 https://careersatdoordash.com/career-areas/engineering/
 https://www.canva.dev/blog/engineering/
 https://engineering.atspotify.com/
+
+https://qwenlm.github.io/blog/
+https://deepmind.google/

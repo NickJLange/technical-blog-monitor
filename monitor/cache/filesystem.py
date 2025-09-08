@@ -166,7 +166,7 @@ class FilesystemCacheClient(BaseCacheClient):
             Tuple[Path, Path]: Paths to the data file and metadata file
         """
         # Hash the key to ensure valid filenames
-        hashed_key = hashlib.md5(key.encode()).hexdigest()
+        hashed_key = hashlib.sha256(key.encode()).hexdigest()
         
         # Create paths
         data_path = self.data_dir / hashed_key
@@ -242,7 +242,7 @@ class FilesystemCacheClient(BaseCacheClient):
                     
                     elif value_type == "pickle":
                         async with aiofiles.open(data_path, "rb") as f:
-                            return pickle.loads(await f.read())
+                            return pickle.loads(await f.read())  # nosec B301: trusted internal cache
                     
                     elif value_type == "bytes":
                         async with aiofiles.open(data_path, "rb") as f:

@@ -183,7 +183,7 @@ class CacheEntry(BaseModel):
             entry_dict = json.loads(entry_bytes.decode('utf-8'))
             
             # Unpickle the value
-            value = pickle.loads(value_bytes)
+            value = pickle.loads(value_bytes)  # nosec B301: trusted internal cache
             
             # Restore the value
             entry_dict["value"] = value

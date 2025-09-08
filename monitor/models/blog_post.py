@@ -64,7 +64,7 @@ class BlogPost(BaseModel):
     def generate_id(self) -> str:
         """Generate a unique ID for the blog post based on URL and title."""
         unique_string = f"{self.url}:{self.title}"
-        return hashlib.md5(unique_string.encode()).hexdigest()
+        return hashlib.sha256(unique_string.encode()).hexdigest()
     
     def is_same_as(self, other: 'BlogPost') -> bool:
         """Check if this blog post is the same as another."""

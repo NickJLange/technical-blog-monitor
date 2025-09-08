@@ -127,8 +127,8 @@ class FeedProcessor(abc.ABC):
         Returns:
             str: Feed fingerprint
         """
-        # Default implementation uses MD5 hash of the content
-        return hashlib.md5(content).hexdigest()
+        # Default implementation uses a stable hash of the content (not for security)
+        return hashlib.sha256(content).hexdigest()
     
     def get_cache_key(self) -> str:
         """
@@ -138,7 +138,7 @@ class FeedProcessor(abc.ABC):
             str: Cache key
         """
         feed_url = str(self.url)
-        return f"{FEED_CACHE_PREFIX}{hashlib.md5(feed_url.encode()).hexdigest()}"
+        return f"{FEED_CACHE_PREFIX}{hashlib.sha256(feed_url.encode()).hexdigest()}"
 
 
 class CacheClient(Protocol):
@@ -445,7 +445,7 @@ async def parse_feed_entries(
             
             # Generate a unique ID
             entry_id = entry.get('id') or entry.get('guid') or url
-            post_id = hashlib.md5(f"{feed_name}:{entry_id}".encode()).hexdigest()
+            post_id = hashlib.sha256(f"{feed_name}:{entry_id}".encode()).hexdigest()
             
             # Parse dates
             publish_date = None
