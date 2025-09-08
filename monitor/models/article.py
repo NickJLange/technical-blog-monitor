@@ -83,22 +83,23 @@ class ArticleContent(BaseModel):
             self.reading_time_minutes = round(self.word_count / 225, 1)
         return self
     
-    @model_validator(mode='after')
-    def sanitize_text(self) -> 'ArticleContent':
+    @field_validator("text", mode="before")
+    @classmethod
+    def _sanitize_text(cls, v: Optional[str]) -> Optional[str]:
         """Sanitize the text content by removing excessive whitespace."""
-        if self.text:
-            # Replace multiple newlines with a maximum of two
-            self.text = re.sub(r'\n{3,}', '\n\n', self.text)
-            # Replace multiple spaces with a single space
-            self.text = re.sub(r' {2,}', ' ', self.text)
-            # Trim leading/trailing whitespace
-            self.text = self.text.strip()
-        return self
+        if not v:
+            return v
+        # Replace multiple newlines with a maximum of two
+        v = re.sub(r"\n{3,}", "\n\n", v)
+        # Replace multiple spaces with a single space
+        v = re.sub(r" {2,}", " ", v)
+        # Trim leading/trailing whitespace
+        return v.strip()
     
     def generate_id(self) -> str:
         """Generate a unique ID for the article content based on URL and title."""
         unique_string = f"{self.url}:{self.title}"
-        return hashlib.md5(unique_string.encode()).hexdigest()
+        return hashlib.sha256(unique_string.encode()).hexdigest()
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert the article content to a dictionary with camelCase keys."""
