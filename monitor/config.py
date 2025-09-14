@@ -193,6 +193,15 @@ class MetricsConfig(BaseModel):
     structured_logging: bool = True
 
 
+class WebDashboardConfig(BaseModel):
+    """Configuration for the web dashboard."""
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 8080
+    auto_refresh_seconds: int = 30
+    show_mock_data: bool = True  # Show mock data when no real data available
+
+
 class ArticleProcessingConfig(BaseModel):
     """
     Configuration controlling how individual articles are processed after they
@@ -279,6 +288,7 @@ class Settings(BaseSettings):
     article_processing: ArticleProcessingConfig = Field(default_factory=ArticleProcessingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    web_dashboard: WebDashboardConfig = Field(default_factory=WebDashboardConfig)
     
     # Runtime settings
     max_concurrent_tasks: int = 10
