@@ -4,20 +4,24 @@
 echo "🚀 Starting Technical Blog Monitor Dashboard..."
 echo "=================================================="
 
-# Check if virtual environment exists
+# Check if uv is installed
+if ! command -v uv &> /dev/null
+then
+    echo "uv could not be found, please install it"
+    exit
+fi
+
+# Create virtual environment if it doesn't exist
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
     uv venv
 fi
 
-# Activate virtual environment and install dependencies if needed
+# Activate virtual environment
 source .venv/bin/activate
 
-# Check if uvicorn is installed
-if ! python -c "import uvicorn" 2>/dev/null; then
-    echo "Installing dependencies..."
-    uv pip install fastapi uvicorn jinja2 python-multipart structlog pydantic pydantic-settings
-fi
+# Install dependencies
+uv pip install -r requirements.txt
 
 # Run the dashboard
 echo ""
@@ -26,4 +30,5 @@ echo "   Open your browser to view the dashboard"
 echo "   Press Ctrl+C to stop"
 echo ""
 
-python test_dashboard.py
+export PYTHONPATH=.
+python monitor/dashboard.py

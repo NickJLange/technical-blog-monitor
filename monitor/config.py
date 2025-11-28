@@ -99,6 +99,7 @@ class EmbeddingModelType(str, Enum):
     OPENAI = "openai"
     HUGGINGFACE = "huggingface"
     SENTENCE_TRANSFORMERS = "sentence_transformers"
+    OLLAMA = "ollama"
     CUSTOM = "custom"
 
 
@@ -143,6 +144,7 @@ class VectorDBType(str, Enum):
     PINECONE = "pinecone"
     MILVUS = "milvus"
     WEAVIATE = "weaviate"
+    PGVECTOR = "pgvector"
 
 
 class VectorDBConfig(BaseModel):

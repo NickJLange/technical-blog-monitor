@@ -513,6 +513,14 @@ async def get_embedding_client(config: EmbeddingConfig) -> EmbeddingClient:
         # For now, treat sentence-transformers as HuggingFace
         return HuggingFaceEmbeddingClient(config)
     
+    elif config.text_model_type == EmbeddingModelType.OLLAMA:
+        # Use Ollama for local embeddings
+        from monitor.embeddings.ollama import OllamaEmbeddingClient
+        return OllamaEmbeddingClient(
+            config=config,
+            model=config.text_model_name or "nomic-embed-text:v1.5",
+        )
+    
     elif config.text_model_type == EmbeddingModelType.CUSTOM:
         # For custom models, use the dummy client for now
         logger.warning(

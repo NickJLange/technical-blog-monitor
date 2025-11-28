@@ -49,12 +49,14 @@ technical-blog-monitor/
 git clone https://github.com/your-org/technical-blog-monitor.git
 cd technical-blog-monitor
 
-# Install Python deps (requires Python ≥3.11)
-pip install poetry
-poetry install
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
 
 # Install Playwright browsers (one-time)
-poetry run playwright install
+uv run playwright install
 ```
 
 ### 2. Configure
@@ -74,13 +76,13 @@ Key items to set:
 ### 3. Run once (debug)
 
 ```bash
-poetry run monitor --once --log-level DEBUG
+uv run monitor --once --log-level DEBUG
 ```
 
 ### 4. Daemon mode
 
 ```bash
-poetry run monitor                      # runs indefinitely
+uv run monitor                      # runs indefinitely
 ```
 
 ### 5. Docker
@@ -121,7 +123,7 @@ Nested keys use double underscores (`__`) as delimiter.
 ### Process a specific feed
 
 ```bash
-poetry run monitor --feed "Google Cloud Blog" --once
+uv run monitor --feed "Google Cloud Blog" --once
 ```
 
 ### Query stored vectors (example with Qdrant)
@@ -144,8 +146,8 @@ for point in hits:
 ### Pre-commit setup
 
 ```bash
-poetry install --with dev
-pre-commit install
+uv sync --group dev
+uv run pre-commit install
 ```
 
 Hooks run `black`, `ruff`, `isort`, `mypy`, and unit tests.
@@ -153,14 +155,14 @@ Hooks run `black`, `ruff`, `isort`, `mypy`, and unit tests.
 ### Testing
 
 ```bash
-pytest -q
+uv run pytest -q
 ```
 
 ### Linting & type-checking
 
 ```bash
-ruff .          # style & static checks
-mypy monitor/   # type safety
+uv run ruff check .          # style & static checks
+uv run mypy monitor/   # type safety
 ```
 
 ### Branching
