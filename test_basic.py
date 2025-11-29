@@ -151,7 +151,7 @@ async def test_vector_database(record):
     from monitor.config import VectorDBConfig, VectorDBType
     vector_db_config = VectorDBConfig(
         db_type=VectorDBType.QDRANT,  # Will use in-memory client
-        connection_string="memory://",
+        connection_string="http://localhost:6333",
         collection_name="test-collection",
         text_vector_dimension=len(record.text_embedding),
     )
