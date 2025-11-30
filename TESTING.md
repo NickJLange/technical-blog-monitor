@@ -25,6 +25,22 @@ uv run playwright install
 
 ## Running Tests
 
+### Run All Tests
+
+Run the complete test suite (unit tests, integration tests, linting, type checking):
+
+```bash
+./run_all_tests.sh
+```
+
+This script runs:
+1. Unit tests (pytest)
+2. Basic integration tests
+3. Feed parsing tests
+4. Full pipeline test
+5. Code linting (ruff)
+6. Type checking (mypy)
+
 ### Unit Tests
 
 Run the full test suite:
