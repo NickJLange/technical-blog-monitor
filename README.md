@@ -158,6 +158,8 @@ Hooks run `black`, `ruff`, `isort`, `mypy`, and unit tests.
 uv run pytest -q
 ```
 
+For detailed testing instructions, see [TESTING.md](TESTING.md).
+
 ### Linting & type-checking
 
 ```bash
