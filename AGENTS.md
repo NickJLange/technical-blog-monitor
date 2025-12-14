@@ -4,39 +4,39 @@ Instructions for AI coding agents working on this repository.
 
 ## Project Overview
 
-Python daemon that monitors technical blogs, renders posts in headless browsers, extracts content, generates embeddings, and stores them in PostgreSQL with pgvector for semantic search.
+Python daemon that monitors technical blogs, renders posts in headless browsers, extracts content, generates embeddings, and stores them in a pluggable vector database for semantic search.
 
-**Key architecture:** Unified PostgreSQL storage - both caching and vector embeddings use the same database with a shared connection pool.
+**Architecture:** Async/multithreaded pipeline with pluggable backends for caching, embeddings, and vector storage.
 
 ## Common Commands
 
 ```bash
 # Install dependencies
-uv sync
+pip install poetry && poetry install
 
 # Install Playwright browsers (one-time)
-uv run playwright install
+poetry run playwright install
 
 # Run tests
-uv run pytest monitor/tests/ -v
+poetry run pytest -q
 
 # Linting and type checking
-uv run ruff check .
-uv run mypy monitor/
+poetry run ruff .
+poetry run mypy monitor/
 
 # Run once in debug mode
-uv run monitor --once --log-level DEBUG
+poetry run monitor --once --log-level DEBUG
 
 # Run specific feed
-uv run monitor --feed "AWS Blog" --once
+poetry run monitor --feed "AWS Blog" --once --log-level DEBUG
 ```
 
 ## Architecture
 
 ```
-Feed Discovery → Browser Rendering → Text Extraction → Embedding → PostgreSQL+pgvector
+Feed Discovery → Browser Rendering → Text Extraction → Embedding → Vector DB
      ↓                  ↓                  ↓              ↓              ↓
-RSS/Atom/JSON    Playwright         Readability      OpenAI/HF      Unified DB
+RSS/Atom/JSON    Playwright         Readability      OpenAI/HF      Qdrant/Chroma
 ```
 
 ### Key Modules
@@ -48,10 +48,9 @@ RSS/Atom/JSON    Playwright         Readability      OpenAI/HF      Unified DB
 | `monitor/feeds/` | RSS/Atom/JSON feed processors |
 | `monitor/fetcher/browser.py` | Playwright browser pool |
 | `monitor/extractor/` | Article text/metadata extraction |
-| `monitor/embeddings/` | OpenAI, HuggingFace, Ollama embedding clients |
-| `monitor/vectordb/pgvector.py` | PostgreSQL+pgvector vector storage |
-| `monitor/cache/postgres.py` | PostgreSQL-based cache with TTL |
-| `monitor/db/postgres_pool.py` | Shared asyncpg connection pool |
+| `monitor/embeddings/` | OpenAI, HuggingFace, Sentence-Transformers clients |
+| `monitor/vectordb/` | Vector database abstraction (Qdrant, Chroma, Pinecone, etc.) |
+| `monitor/cache/` | Caching layer (Redis, filesystem, in-memory) |
 
 ### Data Models
 
@@ -67,16 +66,28 @@ Uses environment variables with `__` delimiter for nesting:
 # Feeds (indexed)
 FEEDS__0__NAME="AWS Blog"
 FEEDS__0__URL="https://aws.amazon.com/blogs/aws/feed/"
+FEEDS__0__CHECK_INTERVAL_MINUTES=60
+FEEDS__0__MAX_POSTS_PER_CHECK=3
 
-# Unified PostgreSQL storage
-VECTOR_DB__DB_TYPE=pgvector
-VECTOR_DB__CONNECTION_STRING=postgresql://user@localhost:5432/blogmon
-CACHE__BACKEND=postgres
-# CACHE__POSTGRES_DSN falls back to VECTOR_DB__CONNECTION_STRING
+# Browser
+BROWSER__HEADLESS=true
+BROWSER__MAX_CONCURRENT_BROWSERS=3
+BROWSER__TIMEOUT_SECONDS=30
+
+# Cache
+CACHE__BACKEND=memory          # Options: memory, filesystem, redis
+CACHE__CACHE_TTL_HOURS=168
+CACHE__REDIS_URL=redis://localhost:6379/0  # If backend=redis
 
 # Embeddings
 EMBEDDING__TEXT_MODEL_TYPE=openai
 EMBEDDING__OPENAI_API_KEY=sk-...
+EMBEDDING__EMBEDDING_DIMENSIONS=1536
+
+# Vector DB
+VECTOR_DB__DB_TYPE=qdrant      # Options: qdrant, chroma, pinecone, milvus, weaviate
+VECTOR_DB__CONNECTION_STRING=http://localhost:6333
+VECTOR_DB__COLLECTION_NAME=technical_blog_posts
 ```
 
 ## Code Patterns
@@ -90,36 +101,37 @@ async with app_lifecycle(settings) as app_context:
 ### Factory functions for pluggable components
 ```python
 get_feed_processor()      # Returns RSS/Atom/JSON parser
-get_embedding_client()    # Returns OpenAI/HF/Ollama client
-get_vector_db_client()    # Returns pgvector client
-get_cache_client()        # Returns PostgreSQL/filesystem/memory cache
+get_embedding_client()    # Returns OpenAI/HF client
+get_vector_db_client()    # Returns pluggable VDB client
 ```
 
-### Shared PostgreSQL pool
-Both `PgVectorDBClient` and `PostgresCacheClient` share the same `asyncpg` pool via `monitor.db.postgres_pool.get_pool()`.
+### Configuration with Pydantic validation
+All settings validated at load time using `monitor.config.Settings`.
 
 ## Testing
 
 ```bash
 # Unit tests
-uv run pytest monitor/tests/ -v
+poetry run pytest monitor/tests/ -v
 
-# Integration tests (require feeds)
-uv run python test_feeds.py
+# Integration tests (require redis/services)
+poetry run pytest test_feeds.py -v
 
 # Full pipeline test
-uv run python test_full_pipeline.py
+poetry run python test_basic.py
 ```
 
-Tests use in-memory implementations for databases/caches when possible.
+Tests use in-memory implementations for databases when possible.
 
 ## Troubleshooting
 
 ### Playwright issues
 ```bash
-uv run playwright install --force
-uv run playwright install-deps
+poetry run playwright install --force
 ```
+
+### Redis connection errors
+Ensure Redis is running: `redis-cli ping`
 
 ### Clear cache
 ```bash
@@ -132,15 +144,18 @@ from monitor.config import load_settings
 settings = load_settings()  # Shows validation errors
 ```
 
-## Pending Work (Redis Removal)
+## Development Workflow
 
-The following tasks remain to fully remove Redis from the codebase:
+1. Create feature branch from `master`: `git checkout -b feat/<topic>` or `docs/<topic>`
+2. Make changes, commit with conventional commits
+3. Run tests: `poetry run pytest -q`
+4. Push and open PR against `master`
+5. After review, squash commits if needed and merge
 
-1. **pyproject.toml**: Remove `redis[hiredis]` and `aioredis` from dependencies
-2. **monitor/cache/redis.py**: Delete this file entirely
-3. **monitor/cache/__init__.py**: Remove Redis imports and CacheBackend.REDIS handling
-4. **monitor/config.py**: Remove `redis_url`, `redis_password`, and `REDIS` from CacheBackend enum
-5. **monitor/main.py**: Remove `RedisJobStore` import and redis scheduler code (lines 25, 125-127)
-6. **.env.example**: Remove the Redis scheduler URL comment (line 125)
-7. **requirements.txt**: Remove `redis` and `aioredis` entries
-8. Run `uv sync` and `uv run pytest monitor/tests/ -v` to verify
+## Notes
+
+- Python 3.11+ required
+- All timestamps in UTC
+- Structured logging enabled by default (JSON output)
+- Pre-commit hooks available: `pre-commit install`
+- Use Poetry for dependency management: `poetry add <package>`
