@@ -1,6 +1,5 @@
-import os
 from pathlib import Path
-import types
+
 import pytest
 
 from monitor.config import BrowserConfig

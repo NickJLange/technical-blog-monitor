@@ -11,24 +11,24 @@ Python daemon that monitors technical blogs, renders posts in headless browsers,
 ## Common Commands
 
 ```bash
-# Install dependencies
-pip install poetry && poetry install
+# Install dependencies (using uv)
+uv sync
 
 # Install Playwright browsers (one-time)
-poetry run playwright install
+uv run playwright install
 
-# Run tests
-poetry run pytest -q
+# Run all tests (including E2E)
+bash scripts/run_all_tests.sh
 
 # Linting and type checking
-poetry run ruff .
-poetry run mypy monitor/
+uv run ruff check .
+uv run mypy monitor/
 
 # Run once in debug mode
-poetry run monitor --once --log-level DEBUG
+uv run monitor --once --log-level DEBUG
 
 # Run specific feed
-poetry run monitor --feed "AWS Blog" --once --log-level DEBUG
+uv run monitor --feed "AWS Blog" --once --log-level DEBUG
 ```
 
 ## Architecture
@@ -36,7 +36,7 @@ poetry run monitor --feed "AWS Blog" --once --log-level DEBUG
 ```
 Feed Discovery → Browser Rendering → Text Extraction → Embedding → Vector DB
      ↓                  ↓                  ↓              ↓              ↓
-RSS/Atom/JSON    Playwright         Readability      OpenAI/HF      Qdrant/Chroma
+RSS/Atom/JSON    Playwright         Readability      OpenAI/HF      PgVector (Postgres)
 ```
 
 ### Key Modules
@@ -49,14 +49,15 @@ RSS/Atom/JSON    Playwright         Readability      OpenAI/HF      Qdrant/Chrom
 | `monitor/fetcher/browser.py` | Playwright browser pool |
 | `monitor/extractor/` | Article text/metadata extraction |
 | `monitor/embeddings/` | OpenAI, HuggingFace, Sentence-Transformers clients |
-| `monitor/vectordb/` | Vector database abstraction (Qdrant, Chroma, Pinecone, etc.) |
-| `monitor/cache/` | Caching layer (Redis, filesystem, in-memory) |
+| `monitor/vectordb/` | Vector database abstraction (PgVector primary) |
+| `monitor/cache/` | Caching layer (PostgreSQL, in-memory) |
 
 ### Data Models
 
 - `BlogPost` - discovered posts from feeds
-- `EmbeddingRecord` - processed content with vectors
-- `ArticleContent` - extracted article text/metadata
+- `Article` - full article content including text and metadata
+- `CacheEntry` - generic cache structure
+- `Embedding` - vector representation of content
 
 ## Configuration
 
@@ -75,9 +76,9 @@ BROWSER__MAX_CONCURRENT_BROWSERS=3
 BROWSER__TIMEOUT_SECONDS=30
 
 # Cache
-CACHE__BACKEND=memory          # Options: memory, filesystem, redis
+CACHE__BACKEND=postgres        # Options: memory, postgres
 CACHE__CACHE_TTL_HOURS=168
-CACHE__REDIS_URL=redis://localhost:6379/0  # If backend=redis
+CACHE__POSTGRES_DSN=postgresql://user:pass@localhost:5432/dbname # If backend=postgres
 
 # Embeddings
 EMBEDDING__TEXT_MODEL_TYPE=openai
@@ -85,8 +86,8 @@ EMBEDDING__OPENAI_API_KEY=sk-...
 EMBEDDING__EMBEDDING_DIMENSIONS=1536
 
 # Vector DB
-VECTOR_DB__DB_TYPE=qdrant      # Options: qdrant, chroma, pinecone, milvus, weaviate
-VECTOR_DB__CONNECTION_STRING=http://localhost:6333
+VECTOR_DB__DB_TYPE=pgvector    # Options: pgvector
+VECTOR_DB__CONNECTION_STRING=postgresql://user:pass@localhost:5432/dbname
 VECTOR_DB__COLLECTION_NAME=technical_blog_posts
 ```
 
@@ -102,7 +103,8 @@ async with app_lifecycle(settings) as app_context:
 ```python
 get_feed_processor()      # Returns RSS/Atom/JSON parser
 get_embedding_client()    # Returns OpenAI/HF client
-get_vector_db_client()    # Returns pluggable VDB client
+get_vector_db_client()    # Returns PgVector client
+get_cache_client()        # Returns Memory/Postgres client
 ```
 
 ### Configuration with Pydantic validation
@@ -111,31 +113,32 @@ All settings validated at load time using `monitor.config.Settings`.
 ## Testing
 
 ```bash
-# Unit tests
-poetry run pytest monitor/tests/ -v
+# Run complete suite
+bash scripts/run_all_tests.sh
 
-# Integration tests (require redis/services)
-poetry run pytest test_feeds.py -v
+# Unit tests only
+uv run pytest monitor/tests/ -v
 
-# Full pipeline test
-poetry run python test_basic.py
+# E2E pipeline test (requires Postgres)
+uv run python tests/e2e/test_postgres_pipeline.py
 ```
-
-Tests use in-memory implementations for databases when possible.
 
 ## Troubleshooting
 
 ### Playwright issues
 ```bash
-poetry run playwright install --force
+uv run playwright install --force
 ```
 
-### Redis connection errors
-Ensure Redis is running: `redis-cli ping`
+### Postgres connection errors
+Ensure Postgres is running and `CACHE__POSTGRES_DSN` is correct. The system requires the `pgvector` extension installed on the database.
 
 ### Clear cache
-```bash
-rm -rf cache/
+```python
+# Programmatic clearing
+from monitor.cache import get_cache_client
+client = await get_cache_client(config)
+await client.clear()
 ```
 
 ### Debug configuration
@@ -146,16 +149,15 @@ settings = load_settings()  # Shows validation errors
 
 ## Development Workflow
 
-1. Create feature branch from `master`: `git checkout -b feat/<topic>` or `docs/<topic>`
+1. Create feature branch from `main`: `git checkout -b feat/<topic>`
 2. Make changes, commit with conventional commits
-3. Run tests: `poetry run pytest -q`
-4. Push and open PR against `master`
+3. Run tests: `uv run pytest -q`
+4. Push and open PR against `main`
 5. After review, squash commits if needed and merge
 
 ## Notes
 
 - Python 3.11+ required
+- Dependencies managed via `uv`
 - All timestamps in UTC
 - Structured logging enabled by default (JSON output)
-- Pre-commit hooks available: `pre-commit install`
-- Use Poetry for dependency management: `poetry add <package>`

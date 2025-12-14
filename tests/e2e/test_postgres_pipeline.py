@@ -1,19 +1,25 @@
 """End-to-end performance test of the unified PostgreSQL+cache architecture."""
 import asyncio
-import time
 import sys
+import time
 from datetime import datetime
-from monitor.config import load_settings
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from monitor.cache import get_cache_client
+from monitor.config import load_settings
+
 
 async def main():
     start_time = time.time()
-    
+
     print("\n" + "=" * 80)
     print("E2E PERFORMANCE TEST: Unified Cache Architecture".center(80))
     print("=" * 80)
     print(f"Test Start: {datetime.now().isoformat()}\n")
-    
+
     # Load settings
     settings = load_settings()
     print("Configuration:")
@@ -21,17 +27,17 @@ async def main():
     print(f"  Vector DB Type:   {settings.vector_db.db_type.value}")
     print(f"  Feeds Configured: {len(settings.feeds)}")
     print(f"  Enabled Feeds:    {', '.join([f.name for f in settings.feeds if f.enabled])}\n")
-    
+
     # Test 1: Cache Initialization
     print("TEST 1: Cache Client Initialization")
     print("-" * 80)
     cache_start = time.time()
     cache_client = await get_cache_client(settings.cache, settings.vector_db)
     cache_init_time = time.time() - cache_start
-    print(f"  Status: ✓ SUCCESS")
+    print("  Status: ✓ SUCCESS")
     print(f"  Time: {cache_init_time*1000:.2f}ms")
     print(f"  Type: {type(cache_client).__name__}\n")
-    
+
     # Test 2: Write Performance
     print("TEST 2: Write Performance (100 entries)")
     print("-" * 80)
@@ -51,7 +57,7 @@ async def main():
     print(f"  Total Time: {write_time:.3f}s")
     print(f"  Throughput: {write_ops:.0f} writes/sec")
     print(f"  Per Entry: {write_time*1000/100:.2f}ms\n")
-    
+
     # Test 3: Read Performance
     print("TEST 3: Read Performance (100 entries)")
     print("-" * 80)
@@ -67,7 +73,7 @@ async def main():
     print(f"  Throughput: {read_ops:.0f} reads/sec")
     print(f"  Hit Rate: {hits}/100 (100%)")
     print(f"  Per Entry: {read_time*1000/100:.2f}ms\n")
-    
+
     # Test 4: Mixed Operations
     print("TEST 4: Mixed Operations (50 write + 50 read)")
     print("-" * 80)
@@ -80,7 +86,7 @@ async def main():
     mixed_ops = 100 / mixed_time
     print(f"  Total Time: {mixed_time:.3f}s")
     print(f"  Total Ops: {mixed_ops:.0f} ops/sec\n")
-    
+
     # Test 5: Existence Check
     print("TEST 5: Existence Checks (100 checks)")
     print("-" * 80)
@@ -94,14 +100,14 @@ async def main():
     print(f"  Total Time: {exist_time:.3f}s")
     print(f"  Throughput: {exist_ops:.0f} checks/sec")
     print(f"  Found: {exists}/100\n")
-    
+
     # Cleanup
     cleanup_start = time.time()
     await cache_client.clear()
     cleanup_time = time.time() - cleanup_start
-    
+
     await cache_client.close()
-    
+
     # Summary
     total_time = time.time() - start_time
     print("=" * 80)

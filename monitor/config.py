@@ -13,7 +13,7 @@ Configuration is loaded from environment variables, .env files, or mounted secre
 """
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from pydantic import (
@@ -82,7 +82,6 @@ class BrowserConfig(BaseModel):
 class CacheBackend(str, Enum):
     """Cache backend types supported."""
     MEMORY = "memory"
-    FILESYSTEM = "filesystem"
     POSTGRES = "postgres"
 
 
@@ -93,7 +92,7 @@ class CacheConfig(BaseModel):
     postgres_dsn: Optional[str] = None
     cache_ttl_hours: int = 24 * 7  # 1 week default
     local_storage_path: Path = Field(default=Path("./cache"))
-    
+
     @field_validator("local_storage_path")
     def validate_local_storage_path(cls, v: Path) -> Path:
         """Ensure the local storage path exists."""
@@ -116,11 +115,11 @@ class EmbeddingConfig(BaseModel):
     text_model_name: str = "text-embedding-ada-002"
     image_model_type: Optional[EmbeddingModelType] = None
     image_model_name: Optional[str] = None
-    
+
     # API credentials
     openai_api_key: Optional[SecretStr] = None
     huggingface_api_key: Optional[SecretStr] = None
-    
+
     # Model parameters
     # Text embedding dimensions; depends on the selected model
     embedding_dimensions: Optional[int] = None
@@ -129,11 +128,11 @@ class EmbeddingConfig(BaseModel):
     batch_size: int = 8
     max_retries: int = 3
     timeout_seconds: int = 30
-    
+
     # Local model settings
     local_model_path: Optional[Path] = None
     use_gpu: bool = False
-    
+
     @model_validator(mode='after')
     def validate_model_config(self) -> 'EmbeddingConfig':
         """Validate that required credentials are provided for the chosen model type."""
@@ -160,16 +159,16 @@ class VectorDBConfig(BaseModel):
     connection_string: str = "http://localhost:6333"
     api_key: Optional[SecretStr] = None
     collection_name: str = "technical_blog_posts"
-    
+
     # Schema configuration
     text_vector_dimension: int = 1536  # Default for OpenAI ada-002
     image_vector_dimension: Optional[int] = None
     distance_metric: str = "cosine"  # cosine, euclidean, dot
-    
+
     # Performance settings
     batch_size: int = 100
     timeout_seconds: int = 30
-    
+
     @field_validator("connection_string")
     def validate_connection_string(cls, v: str) -> str:
         """Validate the connection string format."""
@@ -279,15 +278,15 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
     environment: Environment = Environment.DEVELOPMENT
     debug: bool = Field(default=False)
-    
+
     # Base paths
     base_dir: Path = Field(default_factory=lambda: Path.cwd())
     data_dir: Path = Field(default_factory=lambda: Path.cwd() / "data")
-    
+
     # Feed sources
     feeds: List[FeedConfig] = Field(default_factory=list)
     feed_list_url: Optional[AnyHttpUrl] = None  # Optional URL to fetch feed list
-    
+
     # Component configurations
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
@@ -298,13 +297,13 @@ class Settings(BaseSettings):
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     web_dashboard: WebDashboardConfig = Field(default_factory=WebDashboardConfig)
-    
+
     # Runtime settings
     max_concurrent_tasks: int = 10
     request_timeout_seconds: int = 30
     backoff_max_retries: int = 5
     backoff_max_time: int = 60  # seconds
-    
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -312,13 +311,13 @@ class Settings(BaseSettings):
         extra="ignore",
         validate_default=True,
     )
-    
+
     @model_validator(mode='after')
     def create_directories(self) -> 'Settings':
         """Ensure required directories exist."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         return self
-    
+
     @field_validator("feeds", mode="before")
     @classmethod
     def _coerce_feeds_from_mapping(cls, v):
@@ -340,7 +339,7 @@ class Settings(BaseSettings):
         if len(feed_names) != len(set(feed_names)):
             raise ValueError("Feed names must be unique")
         return feeds
-    
+
     def get_feed_by_name(self, name: str) -> Optional[FeedConfig]:
         """Get a feed configuration by name."""
         for feed in self.feeds:

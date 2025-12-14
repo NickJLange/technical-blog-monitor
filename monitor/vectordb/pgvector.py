@@ -8,6 +8,7 @@ Uses the shared connection pool from monitor.db.postgres_pool to enable
 unified PostgreSQL storage with the cache client.
 """
 import json
+import re
 from typing import List, Optional, Tuple
 
 import asyncpg
@@ -40,16 +41,28 @@ class PgVectorDBClient(BaseVectorDBClient):
         super().__init__(config)
         self.connection_string = config.connection_string
         self.pool: Optional[asyncpg.Pool] = None
+        
+        # Validate collection name to prevent SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', config.collection_name):
+            raise ValueError("Collection name must contain only alphanumeric characters and underscores")
+            
         self.table_name = f"blog_posts_{config.collection_name}"
         self.text_dimension = config.text_vector_dimension
         self.image_dimension = config.image_vector_dimension
 
+        masked_connection = self._mask_connection_string(self.connection_string)
         logger.info(
             "pgvector database client initialized",
-            connection=self.connection_string,
+            connection=masked_connection,
             table=self.table_name,
             text_dim=self.text_dimension,
         )
+
+    def _mask_connection_string(self, conn_str: str) -> str:
+        """Mask username and password in connection string for logging."""
+        # Regex to find user:password and replace password with ***
+        # This regex handles cases with/without user and with/without password
+        return re.sub(r'(://[^:]*)(:.*)?@', r'\1:***@', conn_str)
 
     async def initialize(self) -> None:
         """Initialize the pgvector database connection and tables."""

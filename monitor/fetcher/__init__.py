@@ -11,7 +11,7 @@ The main components are:
 - Browser pool for headless browser automation via Playwright
 - Screenshot capture and page rendering
 """
-from monitor.fetcher.browser import BrowserPool, BrowserContext, render_page, take_screenshot
+from monitor.fetcher.browser import BrowserContext, BrowserPool, render_page, take_screenshot
 from monitor.fetcher.http_client import AsyncHTTPClient, fetch_url, fetch_with_retry
 
 __all__ = [

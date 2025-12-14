@@ -5,22 +5,18 @@ This module provides an async HTTP client for fetching content from web sources,
 with retry logic, timeout handling, and proper error handling. It uses httpx
 for making HTTP requests and tenacity for retry logic.
 """
-import asyncio
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 import structlog
 from tenacity import (
     AsyncRetrying,
     RetryError,
-    retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
-
-from monitor.config import Settings
 
 # Set up structured logger
 logger = structlog.get_logger()
@@ -41,7 +37,7 @@ class AsyncHTTPClient:
     This class provides a wrapper around httpx with retry logic,
     timeout handling, and proper error handling.
     """
-    
+
     def __init__(
         self,
         user_agent: Optional[str] = None,
@@ -70,31 +66,31 @@ class AsyncHTTPClient:
         self.retry_min_wait = retry_min_wait
         self.retry_max_wait = retry_max_wait
         self.retry_multiplier = retry_multiplier
-        
+
         # Set up default headers
         self.default_headers = default_headers or {}
         if "User-Agent" not in self.default_headers:
             self.default_headers["User-Agent"] = self.user_agent
-        
+
         # Create HTTP client
         self.client = httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=True,
             headers=self.default_headers,
         )
-    
+
     async def __aenter__(self) -> "AsyncHTTPClient":
         """Enter the async context manager."""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Exit the async context manager."""
         await self.close()
-    
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self.client.aclose()
-    
+
     async def get(
         self,
         url: str,
@@ -125,10 +121,10 @@ class AsyncHTTPClient:
         request_headers = {**self.default_headers}
         if headers:
             request_headers.update(headers)
-        
+
         # Set timeout
         request_timeout = httpx.Timeout(timeout or self.timeout)
-        
+
         if with_retry:
             return await self._get_with_retry(
                 url,
@@ -145,7 +141,7 @@ class AsyncHTTPClient:
                 timeout=request_timeout,
                 follow_redirects=follow_redirects,
             )
-    
+
     async def _get_with_retry(
         self,
         url: str,
@@ -177,7 +173,7 @@ class AsyncHTTPClient:
             httpx.ReadError,
             httpx.WriteError,
         )
-        
+
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(self.retry_attempts),
@@ -200,7 +196,7 @@ class AsyncHTTPClient:
                             follow_redirects=follow_redirects,
                         )
                         response.raise_for_status()
-                        
+
                         # Log successful request
                         elapsed = time.time() - start_time
                         logger.debug(
@@ -210,9 +206,9 @@ class AsyncHTTPClient:
                             elapsed_seconds=elapsed,
                             attempt=attempt.retry_state.attempt_number,
                         )
-                        
+
                         return response
-                    
+
                     except retry_exceptions as e:
                         # Log retry attempt
                         logger.warning(
@@ -223,7 +219,7 @@ class AsyncHTTPClient:
                             max_attempts=self.retry_attempts,
                         )
                         raise
-        
+
         except RetryError as e:
             # Log final failure
             logger.error(
@@ -233,7 +229,7 @@ class AsyncHTTPClient:
                 attempts=self.retry_attempts,
             )
             raise e.last_attempt.exception()
-    
+
     async def post(
         self,
         url: str,
@@ -266,10 +262,10 @@ class AsyncHTTPClient:
         request_headers = {**self.default_headers}
         if headers:
             request_headers.update(headers)
-        
+
         # Set timeout
         request_timeout = httpx.Timeout(timeout or self.timeout)
-        
+
         if with_retry:
             return await self._post_with_retry(
                 url,
@@ -288,7 +284,7 @@ class AsyncHTTPClient:
                 timeout=request_timeout,
                 follow_redirects=follow_redirects,
             )
-    
+
     async def _post_with_retry(
         self,
         url: str,
@@ -322,7 +318,7 @@ class AsyncHTTPClient:
             httpx.ReadError,
             httpx.WriteError,
         )
-        
+
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(self.retry_attempts),
@@ -346,7 +342,7 @@ class AsyncHTTPClient:
                             follow_redirects=follow_redirects,
                         )
                         response.raise_for_status()
-                        
+
                         # Log successful request
                         elapsed = time.time() - start_time
                         logger.debug(
@@ -356,9 +352,9 @@ class AsyncHTTPClient:
                             elapsed_seconds=elapsed,
                             attempt=attempt.retry_state.attempt_number,
                         )
-                        
+
                         return response
-                    
+
                     except retry_exceptions as e:
                         # Log retry attempt
                         logger.warning(
@@ -369,7 +365,7 @@ class AsyncHTTPClient:
                             max_attempts=self.retry_attempts,
                         )
                         raise
-        
+
         except RetryError as e:
             # Log final failure
             logger.error(
@@ -379,7 +375,7 @@ class AsyncHTTPClient:
                 attempts=self.retry_attempts,
             )
             raise e.last_attempt.exception()
-    
+
     async def head(
         self,
         url: str,
@@ -410,15 +406,15 @@ class AsyncHTTPClient:
         request_headers = {**self.default_headers}
         if headers:
             request_headers.update(headers)
-        
+
         # Set timeout
         request_timeout = httpx.Timeout(timeout or self.timeout)
-        
+
         if with_retry:
             # Use a shorter timeout for HEAD requests
             head_timeout = min(request_timeout.read, 5.0)
             request_timeout = httpx.Timeout(head_timeout)
-            
+
             return await self._head_with_retry(
                 url,
                 request_headers,
@@ -434,7 +430,7 @@ class AsyncHTTPClient:
                 timeout=request_timeout,
                 follow_redirects=follow_redirects,
             )
-    
+
     async def _head_with_retry(
         self,
         url: str,
@@ -466,7 +462,7 @@ class AsyncHTTPClient:
             httpx.ReadError,
             httpx.WriteError,
         )
-        
+
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(self.retry_attempts),
@@ -489,7 +485,7 @@ class AsyncHTTPClient:
                             follow_redirects=follow_redirects,
                         )
                         response.raise_for_status()
-                        
+
                         # Log successful request
                         elapsed = time.time() - start_time
                         logger.debug(
@@ -499,9 +495,9 @@ class AsyncHTTPClient:
                             elapsed_seconds=elapsed,
                             attempt=attempt.retry_state.attempt_number,
                         )
-                        
+
                         return response
-                    
+
                     except retry_exceptions as e:
                         # Log retry attempt
                         logger.warning(
@@ -512,7 +508,7 @@ class AsyncHTTPClient:
                             max_attempts=self.retry_attempts,
                         )
                         raise
-        
+
         except RetryError as e:
             # Log final failure
             logger.error(
@@ -552,7 +548,7 @@ async def fetch_url(
     request_headers = {"User-Agent": DEFAULT_USER_AGENT}
     if headers:
         request_headers.update(headers)
-    
+
     async with AsyncHTTPClient(
         timeout=timeout,
         retry_attempts=DEFAULT_RETRY_ATTEMPTS if with_retry else 1,
@@ -594,7 +590,7 @@ async def fetch_with_retry(
     request_headers = {"User-Agent": DEFAULT_USER_AGENT}
     if headers:
         request_headers.update(headers)
-    
+
     async with AsyncHTTPClient(
         timeout=timeout,
         retry_attempts=retry_attempts,
@@ -625,7 +621,7 @@ async def check_url_exists(
     request_headers = {"User-Agent": DEFAULT_USER_AGENT}
     if headers:
         request_headers.update(headers)
-    
+
     try:
         async with AsyncHTTPClient(
             timeout=timeout,
@@ -634,7 +630,7 @@ async def check_url_exists(
         ) as client:
             await client.head(url, with_retry=False)
             return True
-    
+
     except httpx.HTTPError:
         return False
 
@@ -659,7 +655,7 @@ async def get_url_content_type(
     request_headers = {"User-Agent": DEFAULT_USER_AGENT}
     if headers:
         request_headers.update(headers)
-    
+
     try:
         async with AsyncHTTPClient(
             timeout=timeout,
@@ -668,6 +664,6 @@ async def get_url_content_type(
         ) as client:
             response = await client.head(url, with_retry=False)
             return response.headers.get("content-type")
-    
+
     except httpx.HTTPError:
         return None

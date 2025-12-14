@@ -7,7 +7,6 @@ browser instances, resource management, and provides an async context
 manager interface for efficient browser usage.
 """
 import asyncio
-import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -17,10 +16,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import structlog
 from playwright.async_api import (
     Browser,
-    BrowserContext as PlaywrightBrowserContext,
     Page,
     Playwright,
     async_playwright,
+)
+from playwright.async_api import (
+    BrowserContext as PlaywrightBrowserContext,
 )
 
 from monitor.config import BrowserConfig
@@ -36,7 +37,7 @@ class BrowserContext:
     This class wraps a Playwright browser context and provides methods
     for rendering pages, taking screenshots, and extracting content.
     """
-    
+
     def __init__(
         self,
         browser: Browser,
@@ -57,7 +58,7 @@ class BrowserContext:
         self.pages: Set[Page] = set()
         self.in_use = False
         self.last_used = time.time()
-    
+
     async def new_page(self) -> Page:
         """
         Create a new page in this browser context.
@@ -67,23 +68,23 @@ class BrowserContext:
         """
         page = await self.context.new_page()
         self.pages.add(page)
-        
+
         # Set viewport size
         await page.set_viewport_size({
             "width": self.config.viewport_width,
             "height": self.config.viewport_height,
         })
-        
+
         # Apply stealth mode if enabled
         if self.config.stealth_mode:
             await self._apply_stealth_mode(page)
-        
+
         # Block ads if enabled
         if self.config.block_ads:
             await self._setup_ad_blocking(page)
-        
+
         return page
-    
+
     async def _apply_stealth_mode(self, page: Page) -> None:
         """
         Apply stealth mode to avoid bot detection.
@@ -94,28 +95,28 @@ class BrowserContext:
         # Override user agent if specified
         if self.config.user_agent:
             await page.set_extra_http_headers({"User-Agent": self.config.user_agent})
-        
+
         # Mask WebDriver
         await page.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', {
             get: () => false,
         });
         """)
-        
+
         # Add language
         await page.add_init_script("""
         Object.defineProperty(navigator, 'languages', {
             get: () => ['en-US', 'en'],
         });
         """)
-        
+
         # Mask automation
         await page.add_init_script("""
         Object.defineProperty(navigator, 'plugins', {
             get: () => [1, 2, 3, 4, 5],
         });
         """)
-    
+
     async def _setup_ad_blocking(self, page: Page) -> None:
         """
         Set up ad blocking for a page.
@@ -131,11 +132,11 @@ class BrowserContext:
             'adservice.google.com',
             'advertising.com',
         ]
-        
-        await page.route('**/*', lambda route, request: 
+
+        await page.route('**/*', lambda route, request:
             route.abort() if any(ad in request.url for ad in ad_domains) else route.continue_()
         )
-    
+
     async def close_page(self, page: Page) -> None:
         """
         Close a page and remove it from the set of pages.
@@ -150,29 +151,29 @@ class BrowserContext:
                 logger.warning("Error closing page", error=str(e))
             finally:
                 self.pages.remove(page)
-    
+
     async def close(self) -> None:
         """Close all pages and the browser context."""
         # Close all pages
         for page in list(self.pages):
             await self.close_page(page)
-        
+
         # Close the context
         try:
             await self.context.close()
         except Exception as e:
             logger.warning("Error closing browser context", error=str(e))
-    
+
     def mark_as_used(self) -> None:
         """Mark this context as in use and update the last used time."""
         self.in_use = True
         self.last_used = time.time()
-    
+
     def mark_as_free(self) -> None:
         """Mark this context as free and update the last used time."""
         self.in_use = False
         self.last_used = time.time()
-    
+
     def is_idle(self, idle_timeout: float = 300) -> bool:
         """
         Check if this context has been idle for longer than the timeout.
@@ -194,7 +195,7 @@ class BrowserPool:
     an efficient way to render multiple pages concurrently while limiting
     resource usage.
     """
-    
+
     def __init__(self, config: BrowserConfig):
         """
         Initialize the browser pool.
@@ -209,43 +210,43 @@ class BrowserPool:
         self.semaphore = asyncio.Semaphore(config.max_concurrent_browsers)
         self._shutdown = False
         self._cleanup_task: Optional[asyncio.Task] = None
-    
+
     async def __aenter__(self) -> "BrowserPool":
         """Initialize the browser pool when entering the context manager."""
         await self.initialize()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Clean up resources when exiting the context manager."""
         await self.shutdown()
-    
+
     async def initialize(self) -> None:
         """Initialize the browser pool."""
         if self.playwright is not None:
             return
-        
+
         logger.info("Initializing browser pool", browser_type=self.config.browser_type)
-        
+
         # Start Playwright
         self.playwright = await async_playwright().start()
-        
+
         # Launch browser
         browser_type = getattr(self.playwright, self.config.browser_type)
         self.browser = await browser_type.launch(headless=self.config.headless)
-        
+
         # Start cleanup task
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
-        
+
         logger.info("Browser pool initialized", browser_type=self.config.browser_type)
-    
+
     async def shutdown(self) -> None:
         """Shut down the browser pool and release all resources."""
         if self._shutdown:
             return
-        
+
         logger.info("Shutting down browser pool")
         self._shutdown = True
-        
+
         # Cancel cleanup task
         if self._cleanup_task:
             self._cleanup_task.cancel()
@@ -253,28 +254,28 @@ class BrowserPool:
                 await self._cleanup_task
             except asyncio.CancelledError:
                 pass
-        
+
         # Close all contexts
         for context in list(self.contexts):
             await context.close()
         self.contexts.clear()
-        
+
         # Close browser
         if self.browser:
             await self.browser.close()
             self.browser = None
-        
+
         # Stop Playwright
         if self.playwright:
             await self.playwright.stop()
             self.playwright = None
-        
+
         logger.info("Browser pool shut down")
-    
+
     async def close(self) -> None:
         """Alias for shutdown() for compatibility with context manager patterns."""
         await self.shutdown()
-    
+
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up idle browser contexts."""
         try:
@@ -285,7 +286,7 @@ class BrowserPool:
             logger.debug("Cleanup task cancelled")
         except Exception as e:
             logger.error("Error in cleanup task", error=str(e))
-    
+
     async def _cleanup_idle_contexts(self, idle_timeout: float = 300) -> None:
         """
         Clean up browser contexts that have been idle for too long.
@@ -294,17 +295,17 @@ class BrowserPool:
             idle_timeout: Idle timeout in seconds
         """
         contexts_to_remove = []
-        
+
         for context in self.contexts:
             if context.is_idle(idle_timeout):
                 logger.debug("Cleaning up idle browser context")
                 await context.close()
                 contexts_to_remove.append(context)
-        
+
         # Remove closed contexts from the list
         for context in contexts_to_remove:
             self.contexts.remove(context)
-    
+
     async def _create_context(self) -> BrowserContext:
         """
         Create a new browser context.
@@ -314,7 +315,7 @@ class BrowserPool:
         """
         if not self.browser:
             await self.initialize()
-        
+
         # Create a new browser context
         playwright_context = await self.browser.new_context(
             viewport={
@@ -324,13 +325,13 @@ class BrowserPool:
             user_agent=self.config.user_agent,
             java_script_enabled=not self.config.disable_javascript,
         )
-        
+
         # Create our wrapper context
         context = BrowserContext(self.browser, playwright_context, self.config)
         self.contexts.append(context)
-        
+
         return context
-    
+
     async def _get_free_context(self) -> BrowserContext:
         """
         Get a free browser context from the pool or create a new one.
@@ -343,12 +344,12 @@ class BrowserPool:
             if not context.in_use:
                 context.mark_as_used()
                 return context
-        
+
         # If no free context is available, create a new one
         context = await self._create_context()
         context.mark_as_used()
         return context
-    
+
     @asynccontextmanager
     async def get_context(self) -> BrowserContext:
         """
@@ -366,7 +367,7 @@ class BrowserPool:
                 yield context
             finally:
                 context.mark_as_free()
-    
+
     async def render_page(
         self,
         url: str,
@@ -387,11 +388,11 @@ class BrowserPool:
         """
         wait_until = wait_until or self.config.wait_until
         timeout = timeout or self.config.timeout_seconds * 1000  # Convert to ms
-        
+
         async with self.get_context() as context:
             # Create a new page
             page = await context.new_page()
-            
+
             try:
                 # Navigate to the URL
                 start_time = time.time()
@@ -402,10 +403,10 @@ class BrowserPool:
                     timeout=timeout,
                 )
                 load_time = time.time() - start_time
-                
+
                 # Get page info
                 title = await page.title()
-                
+
                 # Get page metrics
                 metrics = await page.evaluate("""() => {
                     return {
@@ -414,7 +415,7 @@ class BrowserPool:
                         resources: performance.getEntriesByType('resource').length
                     }
                 }""")
-                
+
                 # Collect page info
                 page_info = {
                     "title": title,
@@ -424,13 +425,13 @@ class BrowserPool:
                     "load_time_seconds": load_time,
                     "metrics": metrics,
                 }
-                
+
                 return page, page_info
-            
+
             except Exception as e:
                 await context.close_page(page)
                 raise RuntimeError(f"Error rendering page {url}: {str(e)}") from e
-    
+
     async def take_screenshot(
         self,
         page: Page,
@@ -452,7 +453,7 @@ class BrowserPool:
         """
         full_page = full_page if full_page is not None else self.config.screenshot_full_page
         format = format or self.config.screenshot_format
-        
+
         # Create a default path if none is provided
         if path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -462,19 +463,19 @@ class BrowserPool:
             path = base_dir / filename
         else:
             path = Path(path)
-        
+
         # Ensure the directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Take the screenshot
         await page.screenshot(
             path=str(path),
             full_page=full_page,
             type=format,
         )
-        
+
         return str(path)
-    
+
     async def render_and_screenshot(
         self,
         url: str,
@@ -503,7 +504,7 @@ class BrowserPool:
         """
         try:
             page, page_info = await self.render_page(url, wait_until, timeout)
-            
+
             try:
                 screenshot_path = await self.take_screenshot(
                     page,
@@ -511,7 +512,7 @@ class BrowserPool:
                     full_page,
                     format,
                 )
-                
+
                 logger.info(
                     "Rendered page and took screenshot",
                     url=url,
@@ -519,16 +520,16 @@ class BrowserPool:
                     load_time=page_info["load_time_seconds"],
                     screenshot_path=screenshot_path,
                 )
-                
+
                 return screenshot_path
-            
+
             finally:
                 # Find the context that owns this page
                 for context in self.contexts:
                     if page in context.pages:
                         await context.close_page(page)
                         break
-        
+
         except Exception as e:
             logger.error(
                 "Error rendering page and taking screenshot",
@@ -563,7 +564,7 @@ async def render_page(
         # Launch browser
         browser_type = getattr(playwright, config.browser_type)
         browser = await browser_type.launch(headless=config.headless)
-        
+
         try:
             # Create context
             context = await browser.new_context(
@@ -574,16 +575,16 @@ async def render_page(
                 user_agent=config.user_agent,
                 java_script_enabled=not config.disable_javascript,
             )
-            
+
             try:
                 # Create page
                 page = await context.new_page()
-                
+
                 try:
                     # Navigate to URL
                     wait_until = wait_until or config.wait_until
                     timeout = timeout or config.timeout_seconds * 1000  # Convert to ms
-                    
+
                     start_time = time.time()
                     response = await page.goto(
                         url,
@@ -591,10 +592,10 @@ async def render_page(
                         timeout=timeout,
                     )
                     load_time = time.time() - start_time
-                    
+
                     # Get page info
                     title = await page.title()
-                    
+
                     # Return page info
                     return {
                         "title": title,
@@ -603,13 +604,13 @@ async def render_page(
                         "content_type": response.headers.get("content-type") if response else None,
                         "load_time_seconds": load_time,
                     }
-                
+
                 finally:
                     await page.close()
-            
+
             finally:
                 await context.close()
-        
+
         finally:
             await browser.close()
 
@@ -643,12 +644,12 @@ async def take_screenshot(
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     async with async_playwright() as playwright:
         # Launch browser
         browser_type = getattr(playwright, config.browser_type)
         browser = await browser_type.launch(headless=config.headless)
-        
+
         try:
             # Create context
             context = await browser.new_context(
@@ -659,39 +660,39 @@ async def take_screenshot(
                 user_agent=config.user_agent,
                 java_script_enabled=not config.disable_javascript,
             )
-            
+
             try:
                 # Create page
                 page = await context.new_page()
-                
+
                 try:
                     # Navigate to URL
                     wait_until = wait_until or config.wait_until
                     timeout = timeout or config.timeout_seconds * 1000  # Convert to ms
-                    
+
                     await page.goto(
                         url,
                         wait_until=wait_until,
                         timeout=timeout,
                     )
-                    
+
                     # Take screenshot
                     full_page = full_page if full_page is not None else config.screenshot_full_page
                     format = format or config.screenshot_format
-                    
+
                     await page.screenshot(
                         path=str(path),
                         full_page=full_page,
                         type=format,
                     )
-                    
+
                     return str(path)
-                
+
                 finally:
                     await page.close()
-            
+
             finally:
                 await context.close()
-        
+
         finally:
             await browser.close()

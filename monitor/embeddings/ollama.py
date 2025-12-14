@@ -35,7 +35,7 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
     Response:
       {"embedding": [float, ...]}
     """
-    
+
     def __init__(
         self,
         config: EmbeddingConfig,
@@ -65,19 +65,19 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             limits=httpx.Limits(max_connections=max_connections),
         )
         self._dim: Optional[int] = None
-        
+
         logger.info(
             "Ollama embedding client initialized",
             base_url=self.base_url,
             model=self.model,
             batch_size=self.batch_size,
         )
-    
+
     async def close(self) -> None:
         """Close the embedding client and release resources."""
         await self._client.aclose()
         await super().close()
-    
+
     async def _embed_text_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of texts.
@@ -95,11 +95,11 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             count=len(texts),
             model=self.model,
         )
-        
+
         # Process texts concurrently
         tasks = [self._embed_one(text) for text in texts]
         results = await asyncio.gather(*tasks)
-        
+
         # Cache dimension if not already set
         if self._dim is None and results:
             self._dim = len(results[0])
@@ -108,9 +108,9 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
                 dimension=self._dim,
                 model=self.model,
             )
-        
+
         return results
-    
+
     @retry(
         wait=wait_exponential(min=0.5, max=10),
         stop=stop_after_attempt(5),
@@ -136,20 +136,20 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             "prompt": text,
             "keep_alive": self.keep_alive,
         }
-        
+
         url = f"{self.base_url}/api/embeddings"
-        
+
         try:
             resp = await self._client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
-            
+
             embedding = data.get("embedding")
             if not isinstance(embedding, list) or not embedding:
                 raise RuntimeError(f"Invalid embedding response from Ollama: {data}")
-            
+
             return embedding
-            
+
         except httpx.HTTPError as e:
             logger.error(
                 "HTTP error from Ollama",
@@ -166,7 +166,7 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
                 error=str(e),
             )
             raise
-    
+
     async def _embed_image_batch(self, image_paths: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of images.
@@ -184,12 +184,12 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             "Ollama text models don't support image embeddings, returning dummy vectors",
             count=len(image_paths),
         )
-        
+
         # Return dummy embeddings for images
         from monitor.embeddings import DummyEmbeddingClient
         dummy_client = DummyEmbeddingClient(self.config)
         return await dummy_client._embed_image_batch(image_paths)
-    
+
     async def get_dimension(self) -> int:
         """
         Get the dimension of the embedding vectors.

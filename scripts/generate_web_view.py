@@ -6,47 +6,41 @@ import json
 import pickle
 import sys
 import webbrowser
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-try:
-    from monitor.models.article import ArticleContent
-except ImportError:
-    # Define a dummy class if import fails
-    class ArticleContent:
-        pass
 
 def load_cache_entries(cache_dir: Path) -> List[Dict[str, Any]]:
     """Load all blog post entries from the cache."""
     data_dir = cache_dir / "data"
     meta_dir = cache_dir / "meta"
-    
+
     if not meta_dir.exists():
         print(f"Cache directory not found: {cache_dir}")
         return []
-    
+
     posts = []
     print(f"Scanning cache directory: {meta_dir}")
-    
+
     for meta_file in meta_dir.glob("*"):
         try:
             with open(meta_file, "r") as f:
                 meta = json.loads(f.read())
-            
+
             key = meta.get("key", "")
             if not key.startswith("article_content:"):
                 continue
-                
+
             value_type = meta.get("value_type")
             data_file = data_dir / meta_file.name
-            
+
             if not data_file.exists():
                 continue
-                
+
             data = None
             if value_type == "json":
                 with open(data_file, "r") as f:
@@ -57,7 +51,7 @@ def load_cache_entries(cache_dir: Path) -> List[Dict[str, Any]]:
             elif value_type == "string":
                 with open(data_file, "r") as f:
                     data = f.read()
-            
+
             post_data = {}
             if isinstance(data, dict):
                 post_data = data
@@ -70,44 +64,44 @@ def load_cache_entries(cache_dir: Path) -> List[Dict[str, Any]]:
                     "extracted_at": getattr(data, "extracted_at", None),
                     "summary": getattr(data, "summary", "") or getattr(data, "content", "")[:200] + "..."
                 }
-                
+
                 if hasattr(data, "metadata") and isinstance(data.metadata, dict):
                     if "feed_name" in data.metadata:
                         post_data["source"] = data.metadata["feed_name"]
-            
+
             if post_data:
                 if not post_data.get("publish_date"):
                     post_data["publish_date"] = meta.get("created_at")
                 posts.append(post_data)
-                
+
         except Exception:
             continue
-            
+
     return posts
 
 def format_date(dt_str_or_obj):
     """Format date for display."""
     if not dt_str_or_obj:
         return "N/A"
-    
+
     dt = None
     if isinstance(dt_str_or_obj, (int, float)):
         dt = datetime.fromtimestamp(dt_str_or_obj)
     elif isinstance(dt_str_or_obj, str):
         try:
             dt = datetime.fromisoformat(dt_str_or_obj.replace('Z', '+00:00'))
-        except:
+        except ValueError:
             return dt_str_or_obj
     elif isinstance(dt_str_or_obj, datetime):
         dt = dt_str_or_obj
-        
+
     if dt:
         return dt.strftime("%B %d, %Y")
     return str(dt_str_or_obj)
 
 def generate_html(posts: List[Dict[str, Any]], output_file: Path):
     """Generate the HTML file."""
-    
+
     html_template = """
 <!DOCTYPE html>
 <html lang="en">
@@ -336,7 +330,7 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
 </body>
 </html>
     """
-    
+
     articles_html = ""
     for post in posts:
         source = post.get("source", "Unknown")
@@ -344,11 +338,11 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
         url = post.get("url", "#")
         date_str = format_date(post.get("publish_date"))
         summary = post.get("summary", "")
-        
+
         # Clean up summary if it's too raw
         if len(summary) > 200:
             summary = summary[:197] + "..."
-            
+
         article_html = f"""
         <article class="card">
             <div class="card-header">
@@ -370,26 +364,29 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
         </article>
         """
         articles_html += article_html
-        
+
     final_html = html_template.replace(
         "{total_count}", str(len(posts))
     ).replace(
         "{articles_html}", articles_html
     )
-    
+
     with open(output_file, "w") as f:
         f.write(final_html)
-    
+
     print(f"Generated HTML view at: {output_file.absolute()}")
 
 def main():
-    cache_dir = Path("cache")
+    # Paths relative to project root
+    project_root = Path(__file__).parent.parent
+    cache_dir = project_root / "cache"
+
     posts = load_cache_entries(cache_dir)
-    
+
     if not posts:
         print("No articles found in cache.")
         return
-    
+
     # Sort by publish_date, descending
     def get_sort_key(p):
         d = p.get("publish_date")
@@ -403,12 +400,15 @@ def main():
         if isinstance(d, datetime):
             return d.timestamp()
         return 0
-        
+
     posts.sort(key=get_sort_key, reverse=True)
-    
-    output_file = Path("latest_articles.html")
+
+    output_file = project_root / "data" / "artifacts" / "latest_articles.html"
+    # Ensure directory exists
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
     generate_html(posts, output_file)
-    
+
     # Try to open in browser
     try:
         webbrowser.open(f"file://{output_file.absolute()}")

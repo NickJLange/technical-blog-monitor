@@ -2,7 +2,7 @@
 Cache package for the technical blog monitor.
 
 This package provides caching functionality for storing and retrieving data,
-with support for different cache backends (Redis, filesystem, memory).
+with support for different cache backends (PostgreSQL, Memory).
 It handles serialization, TTL management, and provides a consistent interface
 for all cache operations.
 """
@@ -100,7 +100,7 @@ class CacheClient(Protocol):
         await self.close()
 
 
-class BaseCacheClient:
+class BaseCacheClient(CacheClient):
     """
     Base class for cache clients.
 
@@ -117,6 +117,26 @@ class BaseCacheClient:
         """
         self.config = config
         self.ttl = config.cache_ttl_hours * 3600  # Convert hours to seconds
+
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value - to be implemented by subclasses."""
+        raise NotImplementedError
+
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+        """Set value - to be implemented by subclasses."""
+        raise NotImplementedError
+
+    async def delete(self, key: str) -> bool:
+        """Delete value - to be implemented by subclasses."""
+        raise NotImplementedError
+
+    async def exists(self, key: str) -> bool:
+        """Check existence - to be implemented by subclasses."""
+        raise NotImplementedError
+
+    async def clear(self) -> bool:
+        """Clear cache - to be implemented by subclasses."""
+        raise NotImplementedError
 
     async def __aenter__(self) -> "BaseCacheClient":
         """Enter the async context manager."""
@@ -279,7 +299,6 @@ class BaseCacheClient:
         # Calculate TTL if expires_at is set
         ttl = None
         if entry.expires_at:
-            import time
             from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
             if entry.expires_at > now:
@@ -409,13 +428,13 @@ async def get_cache_client(
         logger.info("Using memory cache")
         return MemoryCacheClient(config)
 
-    from monitor.cache.filesystem import FilesystemCacheClient
-    logger.info("Using filesystem cache", path=config.local_storage_path)
-    return FilesystemCacheClient(config)
+    # Default to memory cache if backend not recognized or supported
+    logger.warning(f"Cache backend '{config.backend}' not supported, falling back to memory cache")
+    from monitor.cache.memory import MemoryCacheClient
+    return MemoryCacheClient(config)
 
 
 # Import specific implementations to make them available
-from monitor.cache.filesystem import FilesystemCacheClient
 from monitor.cache.memory import MemoryCacheClient
 from monitor.cache.postgres import PostgresCacheClient
 
@@ -424,6 +443,5 @@ __all__ = [
     "BaseCacheClient",
     "get_cache_client",
     "MemoryCacheClient",
-    "FilesystemCacheClient",
     "PostgresCacheClient",
 ]

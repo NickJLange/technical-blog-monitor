@@ -31,7 +31,7 @@ logger = structlog.get_logger()
 
 class EmbeddingClient(Protocol):
     """Protocol defining the interface for embedding clients."""
-    
+
     async def embed_text(self, text: str) -> List[float]:
         """
         Generate embeddings for text.
@@ -43,7 +43,7 @@ class EmbeddingClient(Protocol):
             List[float]: Embedding vector
         """
         ...
-    
+
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for multiple texts.
@@ -55,7 +55,7 @@ class EmbeddingClient(Protocol):
             List[List[float]]: List of embedding vectors
         """
         ...
-    
+
     async def embed_image(self, image_path: str) -> List[float]:
         """
         Generate embeddings for an image.
@@ -67,7 +67,7 @@ class EmbeddingClient(Protocol):
             List[float]: Embedding vector
         """
         ...
-    
+
     async def embed_images(self, image_paths: List[str]) -> List[List[float]]:
         """
         Generate embeddings for multiple images.
@@ -79,15 +79,15 @@ class EmbeddingClient(Protocol):
             List[List[float]]: List of embedding vectors
         """
         ...
-    
+
     async def close(self) -> None:
         """Close the embedding client and release resources."""
         ...
-    
+
     async def __aenter__(self) -> "EmbeddingClient":
         """Enter the async context manager."""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Exit the async context manager."""
         await self.close()
@@ -100,7 +100,7 @@ class BaseEmbeddingClient(ABC):
     This class provides common functionality for all embedding clients,
     including batching, caching, and a consistent interface.
     """
-    
+
     def __init__(self, config: EmbeddingConfig):
         """
         Initialize the base embedding client.
@@ -111,19 +111,19 @@ class BaseEmbeddingClient(ABC):
         self.config = config
         self.batch_size = config.batch_size
         self._closed = False
-    
+
     async def __aenter__(self) -> "BaseEmbeddingClient":
         """Enter the async context manager."""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Exit the async context manager."""
         await self.close()
-    
+
     async def close(self) -> None:
         """Close the embedding client and release resources."""
         self._closed = True
-    
+
     async def embed_text(self, text: str) -> List[float]:
         """
         Generate embeddings for text.
@@ -137,7 +137,7 @@ class BaseEmbeddingClient(ABC):
         # Single text embedding is just a special case of batch embedding
         result = await self.embed_texts([text])
         return result[0]
-    
+
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for multiple texts.
@@ -153,16 +153,16 @@ class BaseEmbeddingClient(ABC):
         """
         if not texts:
             return []
-        
+
         # Process in batches
         results = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
             batch_results = await self._embed_text_batch(batch)
             results.extend(batch_results)
-        
+
         return results
-    
+
     @abstractmethod
     async def _embed_text_batch(self, texts: List[str]) -> List[List[float]]:
         """
@@ -178,7 +178,7 @@ class BaseEmbeddingClient(ABC):
             List[List[float]]: List of embedding vectors
         """
         pass
-    
+
     async def embed_image(self, image_path: str) -> List[float]:
         """
         Generate embeddings for an image.
@@ -192,7 +192,7 @@ class BaseEmbeddingClient(ABC):
         # Single image embedding is just a special case of batch embedding
         result = await self.embed_images([image_path])
         return result[0]
-    
+
     async def embed_images(self, image_paths: List[str]) -> List[List[float]]:
         """
         Generate embeddings for multiple images.
@@ -208,16 +208,16 @@ class BaseEmbeddingClient(ABC):
         """
         if not image_paths:
             return []
-        
+
         # Process in batches
         results = []
         for i in range(0, len(image_paths), self.batch_size):
             batch = image_paths[i:i + self.batch_size]
             batch_results = await self._embed_image_batch(batch)
             results.extend(batch_results)
-        
+
         return results
-    
+
     @abstractmethod
     async def _embed_image_batch(self, image_paths: List[str]) -> List[List[float]]:
         """
@@ -241,7 +241,7 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
     
     This client generates random embedding vectors for testing purposes.
     """
-    
+
     def __init__(self, config: EmbeddingConfig):
         """
         Initialize the dummy embedding client.
@@ -252,10 +252,10 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
         super().__init__(config)
         self.text_dim = config.embedding_dimensions or 1536  # Default to OpenAI dimensions
         self.image_dim = getattr(config, "image_embedding_dimensions", 512) or 512  # Default to CLIP dimensions
-        
+
         # Seed the random number generator for reproducible embeddings
         self.rng = np.random.RandomState(42)
-    
+
     async def _embed_text_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generate dummy embeddings for a batch of texts.
@@ -269,27 +269,27 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
             List[List[float]]: List of embedding vectors
         """
         results = []
-        
+
         for text in texts:
             # Generate a deterministic seed from the text
             text_hash = int(hashlib.sha256(text.encode()).hexdigest(), 16) % (2**32)
-            
+
             # Create a separate random generator for this text
             text_rng = np.random.RandomState(text_hash)
-            
+
             # Generate a random vector
             vector = text_rng.randn(self.text_dim)
-            
+
             # Normalize the vector
             norm = np.linalg.norm(vector)
             if norm > 0:
                 vector = vector / norm
-            
+
             # Convert to list of floats
             results.append(vector.tolist())
-        
+
         return results
-    
+
     async def _embed_image_batch(self, image_paths: List[str]) -> List[List[float]]:
         """
         Generate dummy embeddings for a batch of images.
@@ -303,25 +303,25 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
             List[List[float]]: List of embedding vectors
         """
         results = []
-        
+
         for path in image_paths:
             # Generate a deterministic seed from the path
             path_hash = int(hashlib.sha256(str(path).encode()).hexdigest(), 16) % (2**32)
-            
+
             # Create a separate random generator for this image
             path_rng = np.random.RandomState(path_hash)
-            
+
             # Generate a random vector
             vector = path_rng.randn(self.image_dim)
-            
+
             # Normalize the vector
             norm = np.linalg.norm(vector)
             if norm > 0:
                 vector = vector / norm
-            
+
             # Convert to list of floats
             results.append(vector.tolist())
-        
+
         return results
 
 
@@ -331,7 +331,7 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
     
     This client uses the OpenAI API to generate embeddings for text and images.
     """
-    
+
     def __init__(self, config: EmbeddingConfig):
         """
         Initialize the OpenAI embedding client.
@@ -340,12 +340,12 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
             config: Embedding configuration
         """
         super().__init__(config)
-        
+
         # Import OpenAI here to avoid dependency if not used
         try:
             import openai
             self.openai = openai
-            
+
             # Set up OpenAI client
             if config.openai_api_key:
                 self.client = openai.OpenAI(
@@ -353,23 +353,23 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
                 )
             else:
                 raise ValueError("OpenAI API key is required")
-            
+
             # Set model names
             self.text_model = config.text_model_name or "text-embedding-ada-002"
             self.image_model = config.image_model_name
-            
+
             logger.info(
                 "OpenAI embedding client initialized",
                 text_model=self.text_model,
                 image_model=self.image_model,
             )
-        
+
         except ImportError:
             raise ImportError(
                 "OpenAI package is required for OpenAIEmbeddingClient. "
                 "Install it with 'pip install openai'."
             )
-    
+
     async def _embed_text_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of texts using OpenAI API.
@@ -387,11 +387,11 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
             model=self.text_model,
             count=len(texts),
         )
-        
+
         # For now, return dummy embeddings
         dummy_client = DummyEmbeddingClient(self.config)
         return await dummy_client._embed_text_batch(texts)
-    
+
     async def _embed_image_batch(self, image_paths: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of images using OpenAI API.
@@ -409,7 +409,7 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
             model=self.image_model,
             count=len(image_paths),
         )
-        
+
         # For now, return dummy embeddings
         dummy_client = DummyEmbeddingClient(self.config)
         return await dummy_client._embed_image_batch(image_paths)
@@ -421,7 +421,7 @@ class HuggingFaceEmbeddingClient(BaseEmbeddingClient):
     
     This client uses HuggingFace models to generate embeddings for text and images.
     """
-    
+
     def __init__(self, config: EmbeddingConfig):
         """
         Initialize the HuggingFace embedding client.
@@ -430,18 +430,18 @@ class HuggingFaceEmbeddingClient(BaseEmbeddingClient):
             config: Embedding configuration
         """
         super().__init__(config)
-        
+
         # This is a stub implementation
         # In a real implementation, this would load HuggingFace models
         self.text_model = config.text_model_name or "sentence-transformers/all-MiniLM-L6-v2"
         self.image_model = config.image_model_name
-        
+
         logger.info(
             "HuggingFace embedding client initialized (stub)",
             text_model=self.text_model,
             image_model=self.image_model,
         )
-    
+
     async def _embed_text_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of texts using HuggingFace models.
@@ -459,11 +459,11 @@ class HuggingFaceEmbeddingClient(BaseEmbeddingClient):
             model=self.text_model,
             count=len(texts),
         )
-        
+
         # For now, return dummy embeddings
         dummy_client = DummyEmbeddingClient(self.config)
         return await dummy_client._embed_text_batch(texts)
-    
+
     async def _embed_image_batch(self, image_paths: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of images using HuggingFace models.
@@ -481,7 +481,7 @@ class HuggingFaceEmbeddingClient(BaseEmbeddingClient):
             model=self.image_model,
             count=len(image_paths),
         )
-        
+
         # For now, return dummy embeddings
         dummy_client = DummyEmbeddingClient(self.config)
         return await dummy_client._embed_image_batch(image_paths)
@@ -505,14 +505,14 @@ async def get_embedding_client(config: EmbeddingConfig) -> EmbeddingClient:
     """
     if config.text_model_type == EmbeddingModelType.OPENAI:
         return OpenAIEmbeddingClient(config)
-    
+
     elif config.text_model_type == EmbeddingModelType.HUGGINGFACE:
         return HuggingFaceEmbeddingClient(config)
-    
+
     elif config.text_model_type == EmbeddingModelType.SENTENCE_TRANSFORMERS:
         # For now, treat sentence-transformers as HuggingFace
         return HuggingFaceEmbeddingClient(config)
-    
+
     elif config.text_model_type == EmbeddingModelType.OLLAMA:
         # Use Ollama for local embeddings
         from monitor.embeddings.ollama import OllamaEmbeddingClient
@@ -520,7 +520,7 @@ async def get_embedding_client(config: EmbeddingConfig) -> EmbeddingClient:
             config=config,
             model=config.text_model_name or "nomic-embed-text:v1.5",
         )
-    
+
     elif config.text_model_type == EmbeddingModelType.CUSTOM:
         # For custom models, use the dummy client for now
         logger.warning(
@@ -528,7 +528,7 @@ async def get_embedding_client(config: EmbeddingConfig) -> EmbeddingClient:
             model_name=config.text_model_name,
         )
         return DummyEmbeddingClient(config)
-    
+
     else:
         # Default to dummy client for testing
         logger.info(

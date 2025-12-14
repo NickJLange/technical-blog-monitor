@@ -3,9 +3,18 @@
 
 set -e  # Exit on error
 
+# Ensure we are running from the project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
+# Unset BROWSER to avoid Pydantic settings conflict
+unset BROWSER
+
 echo "======================================"
 echo "Running All Tests"
 echo "======================================"
+echo "Working Directory: $(pwd)"
 echo ""
 
 # Colors for output
@@ -42,18 +51,21 @@ run_test() {
 run_test "Unit Tests (pytest)" "uv run pytest monitor/tests/" || true
 
 # 2. Basic Integration Tests
-run_test "Basic Integration Tests" "uv run python test_basic.py" || true
+run_test "Basic Integration Tests" "uv run python tests/integration/test_basic.py" || true
 
 # 3. Feed Tests
-run_test "Feed Parsing Tests" "uv run python test_feeds.py" || true
+run_test "Feed Parsing Tests" "uv run python tests/integration/test_feeds.py" || true
 
 # 4. Full Pipeline Test
-run_test "Full Pipeline Test" "uv run python test_full_pipeline.py" || true
+run_test "Full Pipeline Test" "uv run python tests/e2e/test_full_pipeline.py" || true
 
-# 5. Linting
+# 5. Postgres E2E Test
+run_test "Postgres E2E Test" "uv run python tests/e2e/test_postgres_pipeline.py" || true
+
+# 6. Linting
 run_test "Code Linting (ruff)" "uv run ruff check ." || true
 
-# 6. Type Checking
+# 7. Type Checking
 run_test "Type Checking (mypy)" "uv run mypy monitor/" || true
 
 # Summary
