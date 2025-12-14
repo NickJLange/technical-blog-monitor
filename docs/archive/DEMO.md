@@ -11,7 +11,7 @@
 | Scraper | `httpx`, `feedparser`, custom RSS/Atom/JSON processors | Detect new posts every hour |
 | Renderer | `playwright` (headless Chromium) + async browser pool | Fully render pages & take screenshots |
 | Extractor | `readability-lxml`, BeautifulSoup | Clean article text, pull metadata & images |
-| Cache | pluggable (`redis`, filesystem, in-mem) | Avoid re-fetching content |
+| Cache | pluggable (`postgres`, filesystem, in-mem) | Avoid re-fetching content |
 | Embeddings | pluggable (`openai`, HF, or **dummy** for demo) | Generate text + image vectors |
 | Vector DB | pluggable (`qdrant`, Chroma, Pinecone, or in-mem) | Store vectors for semantic search |
 | Orchestrator | `asyncio`, `APScheduler` | Multithread/async daemon, graceful shutdown |
@@ -67,11 +67,24 @@ The JSON/RSS processor autodetects format.
 
 Key switches for the demo:
 
-```
+```bash
+# Cache configuration (choose one backend)
+CACHE__BACKEND=filesystem           # Options: memory, filesystem, postgres
+CACHE__LOCAL_STORAGE_PATH=./cache   # Only required if CACHE__BACKEND=filesystem
+# CACHE__POSTGRES_DSN=postgresql://user:pass@localhost:5432/db  # Only if CACHE__BACKEND=postgres
+
+# Embeddings
 EMBEDDING__TEXT_MODEL_TYPE=custom   # uses DummyEmbeddingClient
-VECTOR_DB__DB_TYPE=qdrant           # stub -> in-memory
-CACHE__ENABLED=true                 # filesystem cache ./cache
+
+# Vector Database
+VECTOR_DB__DB_TYPE=qdrant           # Options: pgvector, qdrant, chroma, pinecone, milvus, weaviate
+VECTOR_DB__CONNECTION_STRING=memory://  # In-memory for demo
 ```
+
+**Note:** 
+- Use `CACHE__BACKEND=memory` for fastest local testing (no disk I/O)
+- Use `CACHE__BACKEND=filesystem` to persist cached articles to disk
+- Use `CACHE__BACKEND=postgres` with `CACHE__POSTGRES_DSN` for production unified storage
 
 ### 3.3  One-shot run
 

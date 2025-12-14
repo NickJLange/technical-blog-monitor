@@ -8,24 +8,17 @@ the lifecycle of the application including graceful shutdown.
 """
 import argparse
 import asyncio
-import atexit
-import os
+import logging
 import signal
 import sys
-import time
-import logging
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AsyncExitStack, asynccontextmanager
-from functools import partial
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Optional, Set
 
 import structlog
-from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from prometheus_client import start_http_server
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from monitor.config import LogLevel, Settings, load_settings
 from monitor.i18n import _
@@ -41,7 +34,7 @@ class AppContext:
     This class manages the lifecycle of all components and provides access
     to them throughout the application.
     """
-    
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.exit_stack = AsyncExitStack()
@@ -53,79 +46,76 @@ class AppContext:
         self.vector_db_client = None  # Will be initialized later
         self.shutdown_event = asyncio.Event()
         self.active_tasks: Set[asyncio.Task] = set()
-    
+
     async def initialize(self) -> None:
         """Initialize all components and resources."""
         logger.info("Initializing application context")
-        
+
         # Set up thread pool for CPU-bound tasks
         self.thread_pool = ThreadPoolExecutor(
             max_workers=self.settings.max_concurrent_tasks,
             thread_name_prefix="monitor-worker"
         )
-        
+
         # Initialize components
         await self._init_cache()
         await self._init_browser_pool()
         await self._init_embedding_client()
         await self._init_vector_db()
-        
+
         # Set up scheduler
         await self._init_scheduler()
-        
+
         logger.info("Application context initialized")
-    
+
     async def _init_cache(self) -> None:
         """Initialize the cache client."""
         from monitor.cache import get_cache_client
-        
+
         logger.info("Initializing cache client")
-        self.cache_client = await get_cache_client(self.settings.cache)
+        self.cache_client = await get_cache_client(self.settings.cache, self.settings.vector_db)
         await self.exit_stack.enter_async_context(self.cache_client)
         logger.info("Cache client initialized", type=type(self.cache_client).__name__)
-    
+
     async def _init_browser_pool(self) -> None:
         """Initialize the browser pool."""
         from monitor.fetcher.browser import BrowserPool
-        
+
         logger.info("Initializing browser pool")
         self.browser_pool = BrowserPool(self.settings.browser)
         await self.exit_stack.enter_async_context(self.browser_pool)
-        logger.info("Browser pool initialized", 
+        logger.info("Browser pool initialized",
                     max_browsers=self.settings.browser.max_concurrent_browsers)
-    
+
     async def _init_embedding_client(self) -> None:
         """Initialize the embedding client."""
         from monitor.embeddings import get_embedding_client
-        
+
         logger.info("Initializing embedding client")
         self.embedding_client = await get_embedding_client(self.settings.embedding)
         await self.exit_stack.enter_async_context(self.embedding_client)
-        logger.info("Embedding client initialized", 
+        logger.info("Embedding client initialized",
                     text_model=self.settings.embedding.text_model_name,
                     image_model=self.settings.embedding.image_model_name)
-    
+
     async def _init_vector_db(self) -> None:
         """Initialize the vector database client."""
         from monitor.vectordb import get_vector_db_client
-        
+
         logger.info("Initializing vector database client")
         self.vector_db_client = await get_vector_db_client(self.settings.vector_db)
         await self.exit_stack.enter_async_context(self.vector_db_client)
-        logger.info("Vector database client initialized", 
+        logger.info("Vector database client initialized",
                     type=self.settings.vector_db.db_type.value,
                     collection=self.settings.vector_db.collection_name)
-    
+
     async def _init_scheduler(self) -> None:
         """Initialize the job scheduler."""
         logger.info("Initializing job scheduler")
-        
+
         # Set up job stores
         jobstores = {"default": MemoryJobStore()}
-        if (self.settings.scheduler.job_store_type == "redis" and 
-                self.settings.scheduler.job_store_url):
-            jobstores["redis"] = RedisJobStore(url=self.settings.scheduler.job_store_url)
-        
+
         # Create scheduler (use default AsyncIO executor)
         self.scheduler = AsyncIOScheduler(
             jobstores=jobstores,
@@ -136,60 +126,60 @@ class AppContext:
                 "max_instances": self.settings.scheduler.max_instances
             }
         )
-        
+
         # Attach application context so helper modules can access it
         # (monitor.scheduler expects `scheduler.app_context` to be present).
         self.scheduler.app_context = self
 
         # Schedule jobs
         self._schedule_jobs()
-        
+
         # Start scheduler
         self.scheduler.start()
         logger.info("Job scheduler initialized and started")
-    
+
     def _schedule_jobs(self) -> None:
         """Schedule all monitoring jobs."""
         from monitor.scheduler import schedule_feed_jobs
-        
+
         schedule_feed_jobs(self.scheduler, self.settings.feeds)
-        
-        logger.info("Scheduled feed monitoring jobs", 
+
+        logger.info("Scheduled feed monitoring jobs",
                     feed_count=len(self.settings.feeds))
-    
+
     async def shutdown(self) -> None:
         """Gracefully shut down all components and resources."""
         logger.info("Shutting down application")
-        
+
         # Signal shutdown to all tasks
         self.shutdown_event.set()
-        
+
         # Cancel all active tasks
         if self.active_tasks:
             logger.info("Cancelling active tasks", count=len(self.active_tasks))
             for task in self.active_tasks:
                 if not task.done():
                     task.cancel()
-            
+
             # Wait for tasks to complete cancellation
             await asyncio.gather(*self.active_tasks, return_exceptions=True)
-        
+
         # Shutdown scheduler
         if self.scheduler and self.scheduler.running:
             logger.info("Shutting down scheduler")
             self.scheduler.shutdown(wait=False)
-        
+
         # Close all components using the exit stack
         logger.info("Closing all components")
         await self.exit_stack.aclose()
-        
+
         # Shutdown thread pool
         if self.thread_pool:
             logger.info("Shutting down thread pool")
             self.thread_pool.shutdown(wait=True, cancel_futures=True)
-        
+
         logger.info("Application shutdown complete")
-    
+
     def create_task(self, coro) -> asyncio.Task:
         """Create a tracked asyncio task."""
         task = asyncio.create_task(coro)
@@ -206,18 +196,18 @@ async def process_feed(app_context: AppContext, feed_name: str) -> None:
     It handles the entire pipeline from fetching to embedding and storage.
     """
     from monitor.feeds.base import process_feed_posts
-    
+
     logger.info("Processing feed", feed_name=feed_name)
     feed_config = app_context.settings.get_feed_by_name(feed_name)
-    
+
     if not feed_config:
         logger.error("Feed configuration not found", feed_name=feed_name)
         return
-    
+
     if not feed_config.enabled:
         logger.info("Feed is disabled, skipping", feed_name=feed_name)
         return
-    
+
     try:
         # Process the feed and get new posts
         new_posts = await process_feed_posts(
@@ -226,11 +216,11 @@ async def process_feed(app_context: AppContext, feed_name: str) -> None:
             app_context.browser_pool,
             max_posts=feed_config.max_posts_per_check
         )
-        
+
         if not new_posts:
             logger.info("No new posts found", feed_name=feed_name)
             return
-        
+
         logger.info("Found new posts", feed_name=feed_name, count=len(new_posts))
 
         # ------------------------------------------------------------------
@@ -257,33 +247,33 @@ async def process_feed(app_context: AppContext, feed_name: str) -> None:
                 feed_name=feed_name,
                 processed=len(new_posts),
             )
-        
+
         # Process each post in parallel with a semaphore to limit concurrency
         semaphore = asyncio.Semaphore(app_context.settings.max_concurrent_tasks)
         tasks = []
-        
+
         for post in new_posts:
             task = app_context.create_task(
                 process_post(app_context, post, semaphore)
             )
             tasks.append(task)
-        
+
         if tasks:
             # Wait for all post processing tasks to complete
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             # Check for exceptions
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.error("Error processing post", 
+                    logger.error("Error processing post",
                                 feed_name=feed_name,
                                 post_url=new_posts[i].url,
                                 error=str(result))
-        
+
         logger.info("Feed processing complete", feed_name=feed_name)
-    
+
     except Exception as e:
-        logger.exception("Error processing feed", 
+        logger.exception("Error processing feed",
                         feed_name=feed_name,
                         error=str(e))
 
@@ -300,29 +290,29 @@ async def process_post(app_context: AppContext, post, semaphore: asyncio.Semapho
     """
     from monitor.extractor.article_parser import extract_article_content
     from monitor.models import EmbeddingRecord
-    
+
     async with semaphore:
         logger.info("Processing post", url=post.url, title=post.title)
-        
+
         try:
             # Render page with browser
             screenshot_path = await app_context.browser_pool.render_and_screenshot(post.url)
-            
+
             # Extract article content
             content = await extract_article_content(
-                post.url, 
+                post.url,
                 app_context.cache_client,
                 app_context.thread_pool
             )
-            
+
             # Generate embeddings
             text_embedding = await app_context.embedding_client.embed_text(content.text)
-            
+
             # Generate image embedding if available
             image_embedding = None
             if screenshot_path and app_context.settings.embedding.image_model_name:
                 image_embedding = await app_context.embedding_client.embed_image(screenshot_path)
-            
+
             # Create embedding record
             record = EmbeddingRecord(
                 id=post.id,
@@ -340,18 +330,18 @@ async def process_post(app_context: AppContext, post, semaphore: asyncio.Semapho
                     "tags": content.tags
                 }
             )
-            
+
             # Store in vector database
             await app_context.vector_db_client.upsert(record)
-            
-            logger.info("Post processed successfully", 
+
+            logger.info("Post processed successfully",
                         url=post.url,
                         title=post.title)
-            
+
             return record
-        
+
         except Exception as e:
-            logger.exception("Error processing post", 
+            logger.exception("Error processing post",
                             url=post.url,
                             error=str(e))
             raise
@@ -366,20 +356,20 @@ async def app_lifecycle(settings: Settings):
     """
     # Create app context
     app_context = AppContext(settings)
-    
+
     try:
         # Initialize all components
         await app_context.initialize()
-        
+
         # Start metrics server if enabled
         if settings.metrics.prometheus_enabled:
             start_http_server(settings.metrics.prometheus_port)
-            logger.info("Prometheus metrics server started", 
+            logger.info("Prometheus metrics server started",
                         port=settings.metrics.prometheus_port)
-        
+
         # Yield the initialized app context
         yield app_context
-    
+
     finally:
         # Ensure proper shutdown
         await app_context.shutdown()
@@ -388,7 +378,7 @@ async def app_lifecycle(settings: Settings):
 def setup_logging(settings: Settings) -> None:
     """Set up structured logging based on configuration."""
     log_level = settings.metrics.log_level.value
-    
+
     # Configure structlog
     structlog.configure(
         processors=[
@@ -405,12 +395,12 @@ def setup_logging(settings: Settings) -> None:
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
-    
+
     # Set log level on the standard library root logger so that
     # libraries using logging propagate correctly.
     numeric_level = getattr(logging, log_level, logging.INFO)
     logging.getLogger().setLevel(numeric_level)
-    
+
     logger.info("Logging initialized", level=log_level)
 
 
@@ -422,36 +412,36 @@ def setup_signal_handlers(loop: asyncio.AbstractEventLoop, app_context: AppConte
         if not app_context.shutdown_event.is_set():
             # Stop the event loop
             loop.stop()
-    
+
     # Register signal handlers
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, signal_handler)
-    
+
     logger.info("Signal handlers registered")
 
 
 async def run_daemon(settings: Settings) -> None:
     """Run the application as a daemon that continues until stopped."""
     logger.info("Starting technical blog monitor daemon")
-    
+
     async with app_lifecycle(settings) as app_context:
         # Get the event loop
         loop = asyncio.get_running_loop()
-        
+
         # Set up signal handlers
         setup_signal_handlers(loop, app_context)
-        
+
         try:
             # Keep running until shutdown is requested
             await app_context.shutdown_event.wait()
-        
+
         except asyncio.CancelledError:
             logger.info("Main task cancelled")
-        
+
         except Exception as e:
             logger.exception("Unhandled exception in daemon mode", error=str(e))
             raise
-        
+
         finally:
             logger.info("Daemon shutting down")
 
@@ -459,7 +449,7 @@ async def run_daemon(settings: Settings) -> None:
 async def run_once(settings: Settings) -> None:
     """Run a single iteration of the monitoring process and exit."""
     logger.info("Running technical blog monitor once")
-    
+
     async with app_lifecycle(settings) as app_context:
         try:
             # Process each feed once
@@ -468,13 +458,13 @@ async def run_once(settings: Settings) -> None:
                 if feed.enabled:
                     task = app_context.create_task(process_feed(app_context, feed.name))
                     tasks.append(task)
-            
+
             if tasks:
                 # Wait for all feed processing tasks to complete
                 await asyncio.gather(*tasks)
-            
+
             logger.info("One-time run completed successfully")
-        
+
         except Exception as e:
             logger.exception("Error during one-time run", error=str(e))
             raise
@@ -485,32 +475,32 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=_("Technical Blog Monitor - Track and embed technical blog posts")
     )
-    
+
     parser.add_argument(
         "--config",
         help="Path to configuration file",
         default=None
     )
-    
+
     parser.add_argument(
         "--once",
         action="store_true",
         help="Run once and exit (don't run as daemon)"
     )
-    
+
     parser.add_argument(
         "--feed",
         help="Process only the specified feed (by name)",
         default=None
     )
-    
+
     parser.add_argument(
         "--log-level",
         choices=[level.value for level in LogLevel],
         default=None,
         help="Set the log level"
     )
-    
+
     return parser.parse_args()
 
 
@@ -519,17 +509,17 @@ def main() -> int:
     try:
         # Parse command line arguments
         args = parse_args()
-        
+
         # Load settings
         settings = load_settings()
-        
+
         # Override settings with command line arguments
         if args.log_level:
             settings.metrics.log_level = LogLevel(args.log_level)
-        
+
         # Set up logging
         setup_logging(settings)
-        
+
         # Log startup information
         logger.info(
             "Technical Blog Monitor starting up",
@@ -537,7 +527,7 @@ def main() -> int:
             environment=settings.environment.value,
             python_version=sys.version
         )
-        
+
         # If a specific feed is specified, filter the feeds list
         if args.feed:
             feed = settings.get_feed_by_name(args.feed)
@@ -545,19 +535,19 @@ def main() -> int:
                 logger.error("Feed not found", feed_name=args.feed)
                 return 1
             settings.feeds = [feed]
-        
+
         # Run the appropriate mode
         if args.once:
             asyncio.run(run_once(settings))
         else:
             asyncio.run(run_daemon(settings))
-        
+
         return 0
-    
+
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         return 130
-    
+
     except Exception as e:
         logger.exception("Unhandled exception", error=str(e))
         return 1

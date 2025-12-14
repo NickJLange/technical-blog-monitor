@@ -3,14 +3,13 @@ FastAPI-based web dashboard for the technical blog monitor.
 
 This module provides a web interface to browse and search discovered blog posts.
 """
-import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import structlog
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -50,11 +49,11 @@ def create_app(settings=None) -> FastAPI:
         description="Dashboard for monitoring technical blog posts",
         version="1.0.0"
     )
-    
+
     # Store settings in app state
     app.state.settings = settings
     app.state.vector_db_client = None
-    
+
     @app.on_event("startup")
     async def startup_event():
         """Initialize resources on startup."""
@@ -66,18 +65,18 @@ def create_app(settings=None) -> FastAPI:
                 logger.info("Connected to vector database")
             except Exception as e:
                 logger.warning(f"Could not connect to vector DB: {e}, using mock data")
-    
+
     @app.on_event("shutdown")
     async def shutdown_event():
         """Clean up resources on shutdown."""
         if app.state.vector_db_client:
             await app.state.vector_db_client.close()
-    
+
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):
         """Home page showing dashboard overview."""
         return templates.TemplateResponse("index.html", {"request": request})
-    
+
     @app.get("/api/stats")
     async def api_stats() -> DashboardStats:
         """API endpoint for dashboard statistics."""
@@ -85,15 +84,15 @@ def create_app(settings=None) -> FastAPI:
             try:
                 # Get real stats from vector DB
                 all_posts = await app.state.vector_db_client.list_all(limit=10000)  # Adjust limit as needed
-                
+
                 now = datetime.now(timezone.utc)
                 today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 week_start = today_start - timedelta(days=now.weekday())
-                
+
                 posts_today = 0
                 posts_week = 0
                 sources = set()
-                
+
                 for post in all_posts:
                     if post.publish_date:
                         if post.publish_date >= today_start:
@@ -114,7 +113,7 @@ def create_app(settings=None) -> FastAPI:
                 logger.error(f"Error fetching stats: {e}")
                 # Fallback to mock data on error
                 pass
-        
+
         # Return mock data for testing
         return DashboardStats(
             total_posts=42,
@@ -123,7 +122,7 @@ def create_app(settings=None) -> FastAPI:
             sources=["Google Cloud Blog", "AWS Blog", "Azure Blog", "Uber Engineering"],
             latest_update=datetime.now(timezone.utc)
         )
-    
+
     @app.get("/api/posts")
     async def api_posts(
         page: int = Query(1, ge=1),
@@ -131,7 +130,7 @@ def create_app(settings=None) -> FastAPI:
     ) -> Dict[str, Any]:
         """API endpoint for posts list."""
         posts = []
-        
+
         if app.state.vector_db_client:
             try:
                 # Get real posts from vector DB
@@ -150,7 +149,7 @@ def create_app(settings=None) -> FastAPI:
                     ))
             except Exception as e:
                 logger.error(f"Error fetching posts: {e}")
-        
+
         # If no real posts, return mock data for demo
         if not posts:
             posts = [
@@ -185,14 +184,14 @@ def create_app(settings=None) -> FastAPI:
                     tags=["python", "async", "performance"]
                 )
             ]
-        
+
         return {
             "posts": [p.dict() for p in posts],
             "page": page,
             "per_page": per_page,
             "total": len(posts)
         }
-    
+
     @app.get("/health")
     async def health_check():
         """Health check endpoint."""
@@ -201,5 +200,5 @@ def create_app(settings=None) -> FastAPI:
             "timestamp": datetime.now(timezone.utc),
             "vector_db_connected": app.state.vector_db_client is not None
         }
-    
+
     return app

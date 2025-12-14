@@ -5,7 +5,7 @@ This module defines the ContentType enum used throughout the application
 to classify and categorize different types of technical content that
 the monitoring system processes.
 """
-from enum import Enum, auto
+from enum import Enum
 
 
 class ContentType(str, Enum):
@@ -24,7 +24,7 @@ class ContentType(str, Enum):
     CASE_STUDY = "case_study"
     WHITEPAPER = "whitepaper"
     UNKNOWN = "unknown"
-    
+
     @classmethod
     def from_string(cls, content_type: str) -> 'ContentType':
         """
@@ -40,15 +40,15 @@ class ContentType(str, Enum):
             return cls(content_type.lower())
         except ValueError:
             return cls.UNKNOWN
-    
+
     def is_educational(self) -> bool:
         """Check if the content type is primarily educational."""
         return self in (self.TUTORIAL, self.DOCUMENTATION)
-    
+
     def is_news(self) -> bool:
         """Check if the content type is primarily news-oriented."""
         return self in (self.BLOG_POST, self.NEWS, self.RELEASE_NOTES)
-    
+
     def is_detailed(self) -> bool:
         """Check if the content type is typically detailed/long-form."""
         return self in (self.WHITEPAPER, self.CASE_STUDY, self.DOCUMENTATION)

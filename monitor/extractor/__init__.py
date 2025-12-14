@@ -13,20 +13,20 @@ The main components are:
 - Text cleaner for normalizing and sanitizing extracted text
 """
 from monitor.extractor.article_parser import (
-    extract_article_content,
-    extract_main_content,
-    extract_article_metadata,
     clean_article_text,
+    extract_article_content,
+    extract_article_metadata,
+    extract_main_content,
 )
 from monitor.extractor.image_extractor import (
-    extract_images,
     download_image,
+    extract_images,
     get_main_image,
 )
 from monitor.extractor.metadata import (
+    extract_author,
     extract_metadata,
     extract_publish_date,
-    extract_author,
     extract_tags,
 )
 

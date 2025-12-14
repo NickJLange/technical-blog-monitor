@@ -4,6 +4,11 @@
 echo "🚀 Starting Technical Blog Monitor Dashboard..."
 echo "=================================================="
 
+# Ensure we are running from the project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
 # Check if uv is installed
 if ! command -v uv &> /dev/null
 then

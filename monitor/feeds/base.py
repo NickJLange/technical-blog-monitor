@@ -9,19 +9,17 @@ The main entry point is the `process_feed_posts` function, which orchestrates
 the entire feed processing pipeline from discovery to post extraction.
 """
 import abc
-import asyncio
 import hashlib
 import re
-import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, Type, Union
-from urllib.parse import urljoin, urlparse
 
+# New imports for full-content capture
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Protocol
+
+import bleach
 import httpx
 import structlog
-import bleach
-from bs4 import BeautifulSoup
-from pydantic import HttpUrl
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -30,12 +28,8 @@ from tenacity import (
 )
 
 from monitor.config import FeedConfig
-from monitor.models.blog_post import BlogPost
-from monitor.models.cache_entry import CacheEntry, ValueType
-# New imports for full-content capture
-from concurrent.futures import ThreadPoolExecutor
 from monitor.extractor.article_parser import extract_article_content
-from monitor.config import ArticleProcessingConfig
+from monitor.models.blog_post import BlogPost
 
 # Set up structured logger
 logger = structlog.get_logger()
@@ -57,7 +51,7 @@ class FeedProcessor(abc.ABC):
     Feed processors are responsible for fetching and parsing feeds from various
     sources (RSS, Atom, JSON, etc.) and extracting blog posts from them.
     """
-    
+
     def __init__(self, config: FeedConfig):
         """
         Initialize the feed processor with a configuration.
@@ -72,7 +66,7 @@ class FeedProcessor(abc.ABC):
             "User-Agent": DEFAULT_USER_AGENT,
             **config.headers
         }
-    
+
     @abc.abstractmethod
     async def fetch_feed(self, client: httpx.AsyncClient) -> bytes:
         """
@@ -88,7 +82,7 @@ class FeedProcessor(abc.ABC):
             httpx.HTTPError: If the HTTP request fails
         """
         pass
-    
+
     @abc.abstractmethod
     async def parse_feed(self, content: bytes) -> List[Dict[str, Any]]:
         """
@@ -104,7 +98,7 @@ class FeedProcessor(abc.ABC):
             ValueError: If the feed content cannot be parsed
         """
         pass
-    
+
     @abc.abstractmethod
     async def extract_posts(self, entries: List[Dict[str, Any]]) -> List[BlogPost]:
         """
@@ -117,7 +111,7 @@ class FeedProcessor(abc.ABC):
             List[BlogPost]: List of blog posts
         """
         pass
-    
+
     async def get_feed_fingerprint(self, content: bytes) -> str:
         """
         Generate a fingerprint for the feed content to detect changes.
@@ -130,7 +124,7 @@ class FeedProcessor(abc.ABC):
         """
         # Default implementation uses a stable hash of the content (not for security)
         return hashlib.sha256(content).hexdigest()
-    
+
     def get_cache_key(self) -> str:
         """
         Get the cache key for this feed.
@@ -144,19 +138,19 @@ class FeedProcessor(abc.ABC):
 
 class CacheClient(Protocol):
     """Protocol defining the interface for cache clients."""
-    
+
     async def get(self, key: str) -> Optional[Any]:
         """Get a value from the cache."""
         ...
-    
+
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """Set a value in the cache with an optional TTL."""
         ...
-    
+
     async def delete(self, key: str) -> bool:
         """Delete a value from the cache."""
         ...
-    
+
     async def exists(self, key: str) -> bool:
         """Check if a key exists in the cache."""
         ...
@@ -164,7 +158,7 @@ class CacheClient(Protocol):
 
 class BrowserPool(Protocol):
     """Protocol defining the interface for browser pools."""
-    
+
     async def render_and_screenshot(self, url: str) -> Optional[str]:
         """Render a page and take a screenshot."""
         ...
@@ -227,10 +221,10 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     from monitor.feeds.atom import AtomFeedProcessor
     from monitor.feeds.json import JSONFeedProcessor
     from monitor.feeds.rss import RSSFeedProcessor
-    
+
     # Check URL patterns first
     url = str(config.url).lower()
-    
+
     if any(pattern in url for pattern in ['/json', '/feed.json', '.json']):
         logger.debug("Using JSON processor based on URL pattern", feed_name=config.name)
         return JSONFeedProcessor(config)
@@ -238,11 +232,11 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     if any(pattern in url for pattern in ['/rss', '/rss.xml', '/feed', '.rss']):
         logger.debug("Using RSS processor based on URL pattern", feed_name=config.name)
         return RSSFeedProcessor(config)
-    
+
     if any(pattern in url for pattern in ['/atom', '/atom.xml', '.atom']):
         logger.debug("Using Atom processor based on URL pattern", feed_name=config.name)
         return AtomFeedProcessor(config)
-    
+
     # If URL pattern doesn't help, try to fetch the feed and check content
     try:
         async with httpx.AsyncClient() as client:
@@ -252,33 +246,33 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
                 headers={"User-Agent": DEFAULT_USER_AGENT},
                 timeout=DEFAULT_TIMEOUT,
             )
-            
+
             content_type = response.headers.get('content-type', '').lower()
-            
+
             if 'application/rss+xml' in content_type or 'application/xml' in content_type:
                 logger.debug("Using RSS processor based on content type", feed_name=config.name)
                 return RSSFeedProcessor(config)
-            
+
             if 'application/atom+xml' in content_type:
                 logger.debug("Using Atom processor based on content type", feed_name=config.name)
                 return AtomFeedProcessor(config)
-            
+
             if 'application/json' in content_type:
                 logger.debug("Using JSON processor based on content type", feed_name=config.name)
                 return JSONFeedProcessor(config)
-            
+
             # If content type doesn't help, try to parse the content
             content = response.content
-            
+
             # Check for RSS/Atom XML patterns
             if b'<rss' in content or b'<channel>' in content:
                 logger.debug("Using RSS processor based on content", feed_name=config.name)
                 return RSSFeedProcessor(config)
-            
+
             if b'<feed' in content and b'xmlns="http://www.w3.org/2005/Atom"' in content:
                 logger.debug("Using Atom processor based on content", feed_name=config.name)
                 return AtomFeedProcessor(config)
-            
+
             # Check if it's valid JSON
             try:
                 response.json()
@@ -286,14 +280,14 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
                 return JSONFeedProcessor(config)
             except ValueError:
                 pass
-    
+
     except Exception as e:
         logger.warning(
             "Error determining feed type, defaulting to RSS",
             feed_name=config.name,
             error=str(e),
         )
-    
+
     # Default to RSS if we can't determine the type
     logger.debug("Defaulting to RSS processor", feed_name=config.name)
     return RSSFeedProcessor(config)
@@ -319,20 +313,20 @@ async def discover_new_posts(
         List[BlogPost]: List of new blog posts
     """
     logger.debug("Discovering new posts", feed_name=processor.name)
-    
+
     # Create HTTP client
     async with httpx.AsyncClient() as client:
         try:
             # Fetch feed content
             content = await processor.fetch_feed(client)
-            
+
             # Generate fingerprint for change detection
             fingerprint = await processor.get_feed_fingerprint(content)
-            
+
             # Check if feed has changed
             cache_key = processor.get_cache_key()
             cached_fingerprint = await cache_client.get(f"{cache_key}:fingerprint")
-            
+
             if cached_fingerprint == fingerprint:
                 logger.debug(
                     "Feed unchanged since last check",
@@ -340,28 +334,28 @@ async def discover_new_posts(
                     fingerprint=fingerprint,
                 )
                 return []
-            
+
             # Parse feed entries
             entries = await processor.parse_feed(content)
-            
+
             # Extract posts from entries
             all_posts = await processor.extract_posts(entries)
-            
+
             # Sort posts by publication date (newest first)
             all_posts.sort(
                 key=lambda p: p.publish_date or datetime.min.replace(tzinfo=timezone.utc),
                 reverse=True,
             )
-            
+
             # Limit number of posts to process
             posts = all_posts[:max_posts]
-            
+
             # Filter out posts that have already been processed
             new_posts = []
             for post in posts:
                 post_cache_key = f"{POST_CACHE_PREFIX}{post.id}"
                 exists = await cache_client.exists(post_cache_key)
-                
+
                 if not exists:
                     new_posts.append(post)
                     # Cache post ID to avoid reprocessing
@@ -370,30 +364,30 @@ async def discover_new_posts(
                         "1",
                         ttl=DEFAULT_CACHE_TTL * 24 * 7,  # 1 week
                     )
-            
+
             # Update feed fingerprint in cache
             await cache_client.set(
                 f"{cache_key}:fingerprint",
                 fingerprint,
                 ttl=DEFAULT_CACHE_TTL,
             )
-            
+
             # Also cache the last check time
             await cache_client.set(
                 f"{cache_key}:last_check",
                 datetime.now(timezone.utc).isoformat(),
                 ttl=DEFAULT_CACHE_TTL * 24 * 30,  # 30 days
             )
-            
+
             logger.info(
                 "Discovered new posts",
                 feed_name=processor.name,
                 new_posts_count=len(new_posts),
                 total_posts_count=len(all_posts),
             )
-            
+
             return new_posts
-        
+
         except httpx.HTTPError as e:
             logger.error(
                 "HTTP error fetching feed",
@@ -403,7 +397,7 @@ async def discover_new_posts(
                 error=str(e),
             )
             return []
-        
+
         except Exception as e:
             logger.exception(
                 "Error discovering new posts",
@@ -433,31 +427,31 @@ async def parse_feed_entries(
         List[BlogPost]: List of blog posts
     """
     posts = []
-    
+
     for entry in entries:
         try:
             # Extract basic fields
             title = entry.get('title', '').strip()
             url = entry.get('link') or entry.get('url')
-            
+
             # Skip entries without title or URL
             if not title or not url:
                 continue
-            
+
             # Generate a unique ID
             entry_id = entry.get('id') or entry.get('guid') or url
             post_id = hashlib.sha256(f"{feed_name}:{entry_id}".encode()).hexdigest()
-            
+
             # Parse dates
             publish_date = None
             updated_date = None
-            
+
             # Try different date fields
             date_fields = [
                 'published', 'pubDate', 'date', 'created', 'issued',
                 'updated', 'modified', 'lastModified',
             ]
-            
+
             for field in date_fields:
                 if field in entry:
                     try:
@@ -472,24 +466,24 @@ async def parse_feed_entries(
                             dt = parser.parse(date_str)
                             if dt.tzinfo is None:
                                 dt = dt.replace(tzinfo=timezone.utc)
-                        
+
                         if field in ['updated', 'modified', 'lastModified']:
                             updated_date = dt
                         else:
                             publish_date = dt
                     except Exception:
                         continue
-            
+
             # Extract author
             author = entry.get('author') or entry.get('creator') or entry.get('dc:creator')
             if isinstance(author, dict):
                 author = author.get('name')
-            
+
             # Extract summary/description
             summary = entry.get('summary') or entry.get('description') or entry.get('content')
             if isinstance(summary, dict):
                 summary = summary.get('value') or summary.get('text')
-            
+
             # Clean up HTML in summary
             if summary and '<' in summary:
                 try:
@@ -498,11 +492,11 @@ async def parse_feed_entries(
                 except Exception:
                     # Fallback if bleach fails (unlikely)
                     summary = re.sub(r'<[^>]+>', '', summary)
-            
+
             # Limit summary length
             if summary and len(summary) > 500:
                 summary = summary[:497] + '...'
-            
+
             # Extract tags/categories
             tags = []
             categories = entry.get('categories') or entry.get('tags') or []
@@ -514,7 +508,7 @@ async def parse_feed_entries(
                         tag = category
                     if tag and isinstance(tag, str):
                         tags.append(tag.strip())
-            
+
             # Create BlogPost object
             post = BlogPost(
                 id=post_id,
@@ -531,9 +525,9 @@ async def parse_feed_entries(
                     'original_id': entry_id,
                 }
             )
-            
+
             posts.append(post)
-        
+
         except Exception as e:
             logger.warning(
                 "Error parsing feed entry",
@@ -541,7 +535,7 @@ async def parse_feed_entries(
                 error=str(e),
                 entry=entry,
             )
-    
+
     return posts
 
 
@@ -567,28 +561,28 @@ async def process_feed_posts(
         List[BlogPost]: List of new blog posts
     """
     logger.info("Processing feed", feed_name=feed_config.name, url=feed_config.url)
-    
+
     try:
         # Get the appropriate feed processor
         processor = await get_feed_processor(feed_config)
-        
+
         # Discover new posts
         new_posts = await discover_new_posts(
             processor,
             cache_client,
             max_posts=max_posts,
         )
-        
+
         if not new_posts:
             logger.info("No new posts found", feed_name=feed_config.name)
             return []
-        
+
         logger.info(
             "Found new posts",
             feed_name=feed_config.name,
             count=len(new_posts),
         )
-        
+
         # If browser pool is available, we could pre-render the pages here
         # to check if they're valid before further processing
         if browser_pool and new_posts:
@@ -602,11 +596,11 @@ async def process_feed_posts(
                         feed_name=feed_config.name,
                         post_url=post.url,
                     )
-                    
+
                     # Just check if the page renders, don't need the screenshot yet
                     await browser_pool.render_and_screenshot(str(post.url))
                     valid_posts.append(post)
-                
+
                 except Exception as e:
                     logger.warning(
                         "Failed to validate post URL",
@@ -614,11 +608,11 @@ async def process_feed_posts(
                         post_url=post.url,
                         error=str(e),
                     )
-            
+
             return valid_posts
-        
+
         return new_posts
-    
+
     except Exception as e:
         logger.exception(
             "Error processing feed",

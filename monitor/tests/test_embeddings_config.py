@@ -11,6 +11,6 @@ def test_dummy_embedding_uses_configured_dimensions():
     cfg = EmbeddingConfig(text_model_type='custom', embedding_dimensions=1536, image_embedding_dimensions=256)
     client = DummyEmbeddingClient(cfg)
     # Access internals to assert chosen dims
-    assert getattr(client, 'text_dim') == 1536
-    assert getattr(client, 'image_dim') == 256
+    assert client.text_dim == 1536
+    assert client.image_dim == 256
 

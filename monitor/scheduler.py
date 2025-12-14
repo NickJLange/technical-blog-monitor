@@ -4,7 +4,6 @@ Scheduler module for the technical blog monitor.
 This module handles setting up APScheduler jobs for feed monitoring
 with configurable intervals and job management.
 """
-import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -30,34 +29,34 @@ def schedule_feed_jobs(scheduler: AsyncIOScheduler, feeds: List[FeedConfig]) -> 
     if not feeds:
         logger.warning("No feeds configured, no jobs will be scheduled")
         return
-    
+
     for feed in feeds:
         if not feed.enabled:
             logger.info("Feed disabled, skipping job scheduling", feed_name=feed.name)
             continue
-        
+
         # Create a job ID based on the feed name
         job_id = f"feed_monitor_{feed.name}"
-        
+
         # Remove any existing job with the same ID
         existing_job = scheduler.get_job(job_id)
         if existing_job:
             logger.debug("Removing existing job", job_id=job_id)
             scheduler.remove_job(job_id)
-        
+
         # Schedule the job with the appropriate interval
         interval_minutes = max(1, feed.check_interval_minutes)  # Ensure at least 1 minute
-        
+
         # Import here to avoid circular imports
         from monitor.main import process_feed
-        
+
         # Get the app context from the scheduler's metadata
         app_context = scheduler.app_context if hasattr(scheduler, "app_context") else None
-        
+
         if not app_context:
             logger.error("App context not available in scheduler", feed_name=feed.name)
             continue
-        
+
         # Schedule the job
         scheduler.add_job(
             process_feed,
@@ -71,10 +70,10 @@ def schedule_feed_jobs(scheduler: AsyncIOScheduler, feeds: List[FeedConfig]) -> 
             max_instances=1,  # Only one instance of each job can run at a time
             coalesce=True,  # Coalesce missed runs
         )
-        
+
         logger.info(
-            "Scheduled feed monitoring job", 
-            feed_name=feed.name, 
+            "Scheduled feed monitoring job",
+            feed_name=feed.name,
             interval_minutes=interval_minutes,
             job_id=job_id
         )
@@ -110,11 +109,11 @@ def schedule_one_time_job(
     elif delay_seconds is not None:
         # Calculate run date from delay
         run_date = datetime.now() + timedelta(seconds=delay_seconds)
-    
+
     # Generate a job ID if not provided
     if job_id is None:
         job_id = f"one_time_{func.__name__}_{datetime.now().timestamp()}"
-    
+
     # Schedule the job
     scheduler.add_job(
         func,
@@ -126,14 +125,14 @@ def schedule_one_time_job(
         name=f"One-time {func.__name__}",
         replace_existing=True,
     )
-    
+
     logger.debug(
-        "Scheduled one-time job", 
-        job_id=job_id, 
+        "Scheduled one-time job",
+        job_id=job_id,
         func=func.__name__,
         run_date=run_date
     )
-    
+
     return job_id
 
 
@@ -164,10 +163,10 @@ def schedule_cron_job(
     # Generate a job ID if not provided
     if job_id is None:
         job_id = f"cron_{func.__name__}_{datetime.now().timestamp()}"
-    
+
     # Parse the cron expression
     trigger = CronTrigger.from_crontab(cron_expression, timezone=timezone)
-    
+
     # Schedule the job
     scheduler.add_job(
         func,
@@ -178,15 +177,15 @@ def schedule_cron_job(
         name=f"Cron {func.__name__}",
         replace_existing=True,
     )
-    
+
     logger.debug(
-        "Scheduled cron job", 
-        job_id=job_id, 
+        "Scheduled cron job",
+        job_id=job_id,
         func=func.__name__,
         cron_expression=cron_expression,
         timezone=timezone
     )
-    
+
     return job_id
 
 
@@ -206,7 +205,7 @@ def cancel_job(scheduler: AsyncIOScheduler, job_id: str) -> bool:
         scheduler.remove_job(job_id)
         logger.debug("Canceled job", job_id=job_id)
         return True
-    
+
     logger.warning("Job not found for cancellation", job_id=job_id)
     return False
 
@@ -227,7 +226,7 @@ def pause_job(scheduler: AsyncIOScheduler, job_id: str) -> bool:
         scheduler.pause_job(job_id)
         logger.debug("Paused job", job_id=job_id)
         return True
-    
+
     logger.warning("Job not found for pausing", job_id=job_id)
     return False
 
@@ -248,14 +247,14 @@ def resume_job(scheduler: AsyncIOScheduler, job_id: str) -> bool:
         scheduler.resume_job(job_id)
         logger.debug("Resumed job", job_id=job_id)
         return True
-    
+
     logger.warning("Job not found for resuming", job_id=job_id)
     return False
 
 
 def reschedule_job(
-    scheduler: AsyncIOScheduler, 
-    job_id: str, 
+    scheduler: AsyncIOScheduler,
+    job_id: str,
     trigger: Union[str, IntervalTrigger, CronTrigger],
     **trigger_args
 ) -> bool:
@@ -276,7 +275,7 @@ def reschedule_job(
         scheduler.reschedule_job(job_id, trigger=trigger, **trigger_args)
         logger.debug("Rescheduled job", job_id=job_id)
         return True
-    
+
     logger.warning("Job not found for rescheduling", job_id=job_id)
     return False
 
@@ -301,7 +300,7 @@ def get_all_jobs(scheduler: AsyncIOScheduler) -> List[Dict[str, Any]]:
             "next_run_time": next_run,
             "trigger": str(job.trigger),
         })
-    
+
     return jobs
 
 

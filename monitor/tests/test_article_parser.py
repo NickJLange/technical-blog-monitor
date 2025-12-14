@@ -1,5 +1,7 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+
 from monitor.extractor.article_parser import extract_article_content
 from monitor.models.article import ArticleContent
 
@@ -24,30 +26,30 @@ async def test_extract_article_content():
     mock_cache = MagicMock()
     mock_cache.get = AsyncMock(return_value=None)
     mock_cache.set = AsyncMock(return_value=True)
-    
+
     from concurrent.futures import ThreadPoolExecutor
     thread_pool = ThreadPoolExecutor(max_workers=1)
-    
+
     # Mock httpx.AsyncClient
     with patch('httpx.AsyncClient') as mock_client_cls:
         mock_client = AsyncMock()
         mock_client_cls.return_value.__aenter__.return_value = mock_client
-        
+
         mock_response = MagicMock()
         mock_response.text = SAMPLE_HTML
         mock_response.raise_for_status = MagicMock()
-        
+
         mock_client.get.return_value = mock_response
-        
+
         # Call the function
         content = await extract_article_content(
             "http://example.com/article",
             mock_cache,
             thread_pool
         )
-        
+
         thread_pool.shutdown()
-        
+
         # Verify results
         assert isinstance(content, ArticleContent)
         assert content.title == "Test Article"

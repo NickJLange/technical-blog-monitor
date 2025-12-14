@@ -1,0 +1,72 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project files
+.env.example
+.pre-commit-config.yaml
+AGENTS.md
+DEMO.md
+TESTING.md
+README.ja.md
+# Keep README.md for pyproject.toml validation
+*.log
+load_test*
+full_pipeline*
+monitor_run*
+test_*.py
+run_*.sh
+generate_web_view.py
+view_latest_entries.py
+E2E_*.* 
+
+# Local data (use volumes instead)
+cache/
+.coverage
+.pytest_cache/
+
+# Docker files
+Dockerfile
+docker-compose*.yml
+.dockerignore

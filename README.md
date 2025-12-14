@@ -11,12 +11,12 @@ A high-performance Python daemon that tracks technical blogs from major companie
 | **Async & Multithreaded** | Built on `asyncio` + thread pools for optimal I/O and CPU throughput. |
 | **Headless rendering** | Uses Playwright (Chromium/Firefox/WebKit) to fully render pages and capture full-page screenshots. |
 | **Content extraction** | Robust article parser turns raw HTML into clean text, metadata, and media links. |
-| **Caching layer** | Redis + local filesystem cache to avoid redundant downloads and re-processing. |
+| **Caching layer** | PostgreSQL-based cache with TTL support to avoid redundant downloads and re-processing. Memory cache for dev/test. |
 | **Pluggable embeddings** | Generate text and image embeddings with OpenAI, HuggingFace, Sentence-Transformers, or custom models. |
-| **Vector DB abstraction** | Works with Qdrant, Chroma, Pinecone, Milvus, Weaviate (choose at runtime). |
+| **Vector DB abstraction** | Primary support for **PgVector** (PostgreSQL) for efficient vector storage and search. |
 | **Observability** | Structured JSON logging, Prometheus metrics, graceful shutdown & retries. |
 | **Container-ready** | Multi-stage Dockerfile with Playwright browsers pre-installed. |
-| **Extensible** | Modular codebase—add new feeds, extractors, or DB back-ends with minimal changes. |
+| **Extensible** | Modular codebase—add new feeds, extractors, or back-ends with minimal changes. |
 
 ---
 
@@ -31,9 +31,12 @@ technical-blog-monitor/
 │   ├── fetcher/             # HTTP & browser workers
 │   ├── extractor/           # Text/image extraction logic
 │   ├── embeddings/          # Model wrappers
-│   ├── vectordb/            # DB abstraction layer
-│   ├── cache/               # Redis & filesystem helpers
-│   └── tests/               # Pytest suite
+│   ├── vectordb/            # DB abstraction layer (PgVector)
+│   ├── cache/               # PostgreSQL & Memory caching
+│   └── tests/               # Unit tests
+├── tests/                   # Integration & E2E tests
+├── docs/                    # Documentation
+├── scripts/                 # Utility scripts
 ├── Dockerfile
 ├── pyproject.toml           # Poetry dependency spec
 └── README.md                # You are here
@@ -71,7 +74,7 @@ Key items to set:
 
 * `FEEDS__0__URL`, `FEEDS__1__URL`, … — feeds to monitor  
 * `EMBEDDING__OPENAI_API_KEY` _or_ `EMBEDDING__HUGGINGFACE_API_KEY`  
-* `VECTOR_DB__CONNECTION_STRING` and optional `VECTOR_DB__API_KEY`
+* `VECTOR_DB__CONNECTION_STRING` (PostgreSQL connection string)
 
 ### 3. Run once (debug)
 
@@ -108,9 +111,9 @@ All settings are typed in `monitor/config.py` and can be supplied via:
 |--------|---------|
 | `FEEDS__` | Multiple feed definitions (name, url, interval, enabled) |
 | `BROWSER__` | Playwright options (headless, viewport, concurrency) |
-| `CACHE__` | Redis URL, TTL, local cache path |
+| `CACHE__` | PostgreSQL DSN, TTL, backend selection (postgres/memory) |
 | `EMBEDDING__` | Model selection, API keys, batch size |
-| `VECTOR_DB__` | DB type, connection, collection & metric |
+| `VECTOR_DB__` | DB type (pgvector), connection, collection |
 | `SCHEDULER__` | APScheduler store & timing options |
 | `METRICS__` | Prometheus & log settings |
 
@@ -126,18 +129,9 @@ Nested keys use double underscores (`__`) as delimiter.
 uv run monitor --feed "Google Cloud Blog" --once
 ```
 
-### Query stored vectors (example with Qdrant)
+### Query stored vectors (PgVector)
 
-```python
-from qdrant_client import QdrantClient
-client = QdrantClient(url="http://localhost:6333")
-hits = client.search(
-    collection_name="technical_blog_posts",
-    query_vector=[...]  # your embedding
-)
-for point in hits:
-    print(point.payload["title"], point.payload["url"])
-```
+The system automatically stores embeddings in the configured PostgreSQL database using the `pgvector` extension. You can query it using standard SQL or the `monitor.vectordb.pgvector` client.
 
 ---
 
@@ -155,10 +149,11 @@ Hooks run `black`, `ruff`, `isort`, `mypy`, and unit tests.
 ### Testing
 
 ```bash
-uv run pytest -q
+# Run full test suite including E2E
+bash scripts/run_all_tests.sh
 ```
 
-For detailed testing instructions, see [TESTING.md](TESTING.md).
+For detailed testing instructions, see [docs/TESTING.md](docs/TESTING.md).
 
 ### Linting & type-checking
 
@@ -200,5 +195,5 @@ This project is licensed under the MIT License – see `LICENSE` for details.
 * Playwright team for reliable browser automation  
 * Pydantic for ergonomic configuration  
 * OpenAI & HuggingFace for amazing embedding models  
-* Qdrant, Chroma, Pinecone, Milvus, Weaviate communities  
+* PgVector for efficient vector similarity search in Postgres
 * All open-source contributors who make this ecosystem possible

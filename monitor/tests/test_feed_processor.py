@@ -1,16 +1,18 @@
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from monitor.feeds.base import FeedProcessor, get_feed_processor
+
 from monitor.config import FeedConfig
+from monitor.feeds.base import FeedProcessor, get_feed_processor
 from monitor.models.blog_post import BlogPost
+
 
 class MockFeedProcessor(FeedProcessor):
     async def fetch_feed(self, client):
         return b"mock content"
-    
+
     async def parse_feed(self, content):
         return [{"title": "Test Post", "link": "http://example.com/post"}]
-    
+
     async def extract_posts(self, entries):
         return [BlogPost(
             id="test-id",

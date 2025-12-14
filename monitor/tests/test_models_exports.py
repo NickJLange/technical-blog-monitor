@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 # Ensure canonical models are re-exported and not redefined here
-from monitor.models import EmbeddingRecord, BlogPost, ArticleContent, CacheEntry
+from monitor.models import ArticleContent, BlogPost, CacheEntry, EmbeddingRecord
 
 
 def test_models_exports_refer_to_canonical_types():
