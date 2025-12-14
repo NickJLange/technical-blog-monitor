@@ -112,8 +112,8 @@ class EmbeddingModelType(str, Enum):
 
 class EmbeddingConfig(BaseModel):
     """Configuration for embedding generation."""
-    text_model_type: EmbeddingModelType = EmbeddingModelType.OPENAI
-    text_model_name: str = "text-embedding-ada-002"
+    text_model_type: EmbeddingModelType = EmbeddingModelType.OLLAMA
+    text_model_name: str = "nomic-embed-text:v1.5"
     image_model_type: Optional[EmbeddingModelType] = None
     image_model_name: Optional[str] = None
     
