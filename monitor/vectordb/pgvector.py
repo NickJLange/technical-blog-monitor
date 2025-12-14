@@ -529,6 +529,43 @@ class PgVectorDBClient(BaseVectorDBClient):
             )
             return 0
 
+    async def get_due_reviews(self, limit: int = 10) -> List[EmbeddingRecord]:
+        """
+        Get records that are due for review.
+        
+        Returns:
+            List[EmbeddingRecord]: Records due for review
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(f"""
+                    SELECT id, url, title, source, author, publish_date,
+                           text_embedding, image_embedding, metadata
+                    FROM {self.table_name}
+                    WHERE (metadata->>'next_review_at')::timestamptz <= NOW()
+                    ORDER BY (metadata->>'next_review_at')::timestamptz ASC
+                    LIMIT $1
+                """, limit)
+
+                records = []
+                for row in rows:
+                    metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                    text_emb = row["text_embedding"]
+                    image_emb = row["image_embedding"]
+                    records.append(EmbeddingRecord(
+                        id=row["id"],
+                        url=row["url"],
+                        title=row["title"],
+                        publish_date=row["publish_date"],
+                        text_embedding=text_emb.tolist() if text_emb is not None else None,
+                        image_embedding=image_emb.tolist() if image_emb is not None else None,
+                        metadata=metadata
+                    ))
+                return records
+        except Exception as e:
+            logger.error("Error fetching due reviews", error=str(e))
+            return []
+
     async def list_all(self, limit: int = 1000) -> List[EmbeddingRecord]:
         """
         List all records in the database.
