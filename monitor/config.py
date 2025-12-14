@@ -79,11 +79,18 @@ class BrowserConfig(BaseModel):
         return v
 
 
+class CacheBackend(str, Enum):
+    """Cache backend types supported."""
+    MEMORY = "memory"
+    FILESYSTEM = "filesystem"
+    POSTGRES = "postgres"
+
+
 class CacheConfig(BaseModel):
     """Configuration for the caching layer."""
     enabled: bool = True
-    redis_url: Optional[str] = None
-    redis_password: Optional[SecretStr] = None
+    backend: CacheBackend = CacheBackend.POSTGRES
+    postgres_dsn: Optional[str] = None
     cache_ttl_hours: int = 24 * 7  # 1 week default
     local_storage_path: Path = Field(default=Path("./cache"))
     
@@ -177,7 +184,7 @@ class VectorDBConfig(BaseModel):
 
 class SchedulerConfig(BaseModel):
     """Configuration for the job scheduler."""
-    job_store_type: str = "memory"  # memory, redis, sqlalchemy
+    job_store_type: str = "memory"  # memory, sqlalchemy
     job_store_url: Optional[str] = None
     max_instances: int = 1
     timezone: str = "UTC"

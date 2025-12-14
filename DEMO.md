@@ -11,7 +11,7 @@
 | Scraper | `httpx`, `feedparser`, custom RSS/Atom/JSON processors | Detect new posts every hour |
 | Renderer | `playwright` (headless Chromium) + async browser pool | Fully render pages & take screenshots |
 | Extractor | `readability-lxml`, BeautifulSoup | Clean article text, pull metadata & images |
-| Cache | pluggable (`redis`, filesystem, in-mem) | Avoid re-fetching content |
+| Cache | pluggable (`postgres`, filesystem, in-mem) | Avoid re-fetching content |
 | Embeddings | pluggable (`openai`, HF, or **dummy** for demo) | Generate text + image vectors |
 | Vector DB | pluggable (`qdrant`, Chroma, Pinecone, or in-mem) | Store vectors for semantic search |
 | Orchestrator | `asyncio`, `APScheduler` | Multithread/async daemon, graceful shutdown |

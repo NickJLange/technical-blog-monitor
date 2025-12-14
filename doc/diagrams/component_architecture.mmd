@@ -1,0 +1,39 @@
+graph TD
+    subgraph Client["Client Layer"]
+        CLI["CLI / Terminal"]
+        Web["Web Dashboard (HTML/JS)"]
+    end
+
+    subgraph Core["Core Application (Python/AsyncIO)"]
+        drive[Main Loop]
+        sched[APScheduler]
+        config[Config Manager]
+        
+        subgraph Pipeline["Data Pipeline"]
+            feed[Feed Manager]
+            fetch["Fetcher (HTTPX/Playwright)"]
+            parse["Parser (Readability/BS4)"]
+            embed[Embedding Service]
+            vector[Vector Client]
+        end
+    end
+
+    subgraph Storage["Data Store"]
+        cache[("File/Redis Cache\n(Raw HTML/Meta)")]
+        vdb[("Vector Database\n(Qdrant/Chroma)")]
+    end
+
+    CLI --> drive
+    Web -.-> vdb
+    
+    drive --> sched
+    sched --> feed
+    feed --> fetch
+    fetch --> cache
+    fetch --> parse
+    parse --> embed
+    embed --> vector
+    vector --> vdb
+    
+    config -.-> feed
+    config -.-> vector

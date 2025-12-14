@@ -11,7 +11,7 @@ A high-performance Python daemon that tracks technical blogs from major companie
 | **Async & Multithreaded** | Built on `asyncio` + thread pools for optimal I/O and CPU throughput. |
 | **Headless rendering** | Uses Playwright (Chromium/Firefox/WebKit) to fully render pages and capture full-page screenshots. |
 | **Content extraction** | Robust article parser turns raw HTML into clean text, metadata, and media links. |
-| **Caching layer** | Redis + local filesystem cache to avoid redundant downloads and re-processing. |
+| **Caching layer** | PostgreSQL-based cache with TTL support to avoid redundant downloads and re-processing. |
 | **Pluggable embeddings** | Generate text and image embeddings with OpenAI, HuggingFace, Sentence-Transformers, or custom models. |
 | **Vector DB abstraction** | Works with Qdrant, Chroma, Pinecone, Milvus, Weaviate (choose at runtime). |
 | **Observability** | Structured JSON logging, Prometheus metrics, graceful shutdown & retries. |
@@ -32,7 +32,7 @@ technical-blog-monitor/
 │   ├── extractor/           # Text/image extraction logic
 │   ├── embeddings/          # Model wrappers
 │   ├── vectordb/            # DB abstraction layer
-│   ├── cache/               # Redis & filesystem helpers
+│   ├── cache/               # PostgreSQL & filesystem helpers
 │   └── tests/               # Pytest suite
 ├── Dockerfile
 ├── pyproject.toml           # Poetry dependency spec
@@ -108,7 +108,7 @@ All settings are typed in `monitor/config.py` and can be supplied via:
 |--------|---------|
 | `FEEDS__` | Multiple feed definitions (name, url, interval, enabled) |
 | `BROWSER__` | Playwright options (headless, viewport, concurrency) |
-| `CACHE__` | Redis URL, TTL, local cache path |
+| `CACHE__` | PostgreSQL DSN, TTL, backend selection |
 | `EMBEDDING__` | Model selection, API keys, batch size |
 | `VECTOR_DB__` | DB type, connection, collection & metric |
 | `SCHEDULER__` | APScheduler store & timing options |

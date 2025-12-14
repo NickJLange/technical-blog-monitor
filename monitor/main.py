@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import structlog
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from prometheus_client import start_http_server
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -122,9 +121,6 @@ class AppContext:
         
         # Set up job stores
         jobstores = {"default": MemoryJobStore()}
-        if (self.settings.scheduler.job_store_type == "redis" and 
-                self.settings.scheduler.job_store_url):
-            jobstores["redis"] = RedisJobStore(url=self.settings.scheduler.job_store_url)
         
         # Create scheduler (use default AsyncIO executor)
         self.scheduler = AsyncIOScheduler(

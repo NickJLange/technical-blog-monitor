@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant S as Scheduler
+    participant F as FeedManager
+    participant H as HTTPFetcher
+    participant C as Cache
+    participant P as Parser
+    participant E as Embedder
+    participant V as VectorDB
+
+    loop Every Interval
+        S->>F: Trigger Feed Check
+        F->>H: Fetch RSS Feed
+        H-->>F: Return XML
+        F->>F: Generate Fingerprint
+        F->>C: Check Fingerprint
+        alt Feed Changed
+            C-->>F: New Fingerprint
+            F->>F: Parse Entries
+            loop For Each Entry
+                F->>C: Check Post ID
+                alt New Post
+                    F->>H: Fetch Article HTML
+                    H-->>P: HTML Content
+                    P->>P: Extract Main Content
+                    P->>C: Cache Article Content
+                    P-->>F: Article Object
+                    F->>E: Generate Embeddings
+                    E-->>F: Vectors
+                    F->>V: Upsert (Vectors + Meta)
+                end
+            end
+        else No Change
+            C-->>F: Existing Fingerprint
+        end
+    end

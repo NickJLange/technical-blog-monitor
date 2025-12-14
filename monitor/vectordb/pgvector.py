@@ -3,36 +3,37 @@ pgvector database client for the technical blog monitor.
 
 This module provides an async client for PostgreSQL with pgvector extension,
 enabling efficient storage and retrieval of vector embeddings.
+
+Uses the shared connection pool from monitor.db.postgres_pool to enable
+unified PostgreSQL storage with the cache client.
 """
 import json
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import asyncpg
-import numpy as np
 import structlog
 from pgvector.asyncpg import register_vector
 
 from monitor.config import VectorDBConfig
+from monitor.db.postgres_pool import get_pool
 from monitor.models.embedding import EmbeddingRecord
 from monitor.vectordb import BaseVectorDBClient
 
-# Set up structured logger
 logger = structlog.get_logger()
 
 
 class PgVectorDBClient(BaseVectorDBClient):
     """
     PostgreSQL with pgvector extension database client.
-    
+
     This client uses PostgreSQL's pgvector extension for efficient
     vector similarity search operations.
     """
-    
+
     def __init__(self, config: VectorDBConfig):
         """
         Initialize the pgvector database client.
-        
+
         Args:
             config: Vector database configuration
         """
@@ -42,32 +43,31 @@ class PgVectorDBClient(BaseVectorDBClient):
         self.table_name = f"blog_posts_{config.collection_name}"
         self.text_dimension = config.text_vector_dimension
         self.image_dimension = config.image_vector_dimension
-        
+
         logger.info(
             "pgvector database client initialized",
             connection=self.connection_string,
             table=self.table_name,
             text_dim=self.text_dimension,
         )
-    
+
     async def initialize(self) -> None:
         """Initialize the pgvector database connection and tables."""
         try:
-            # Create connection pool
-            self.pool = await asyncpg.create_pool(
+            self.pool = await get_pool(
                 self.connection_string,
                 min_size=2,
                 max_size=10,
                 command_timeout=self.config.timeout_seconds,
             )
-            
+
             # Register pgvector type
             async with self.pool.acquire() as conn:
                 await register_vector(conn)
-                
+
                 # Create pgvector extension if not exists
                 await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                
+
                 # Create table for blog posts with vector columns
                 await conn.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_name} (
@@ -84,52 +84,54 @@ class PgVectorDBClient(BaseVectorDBClient):
                         updated_at TIMESTAMPTZ DEFAULT NOW()
                     )
                 """)
-                
+
                 # Create indexes for vector similarity search
                 await conn.execute(f"""
                     CREATE INDEX IF NOT EXISTS {self.table_name}_text_embedding_idx
                     ON {self.table_name} USING ivfflat (text_embedding vector_cosine_ops)
                     WITH (lists = 100)
                 """)
-                
+
                 if self.image_dimension:
                     await conn.execute(f"""
                         CREATE INDEX IF NOT EXISTS {self.table_name}_image_embedding_idx
                         ON {self.table_name} USING ivfflat (image_embedding vector_cosine_ops)
                         WITH (lists = 100)
                     """)
-                
+
                 # Create index on publish_date for time-based queries
                 await conn.execute(f"""
                     CREATE INDEX IF NOT EXISTS {self.table_name}_publish_date_idx
                     ON {self.table_name} (publish_date DESC)
                 """)
-                
+
                 logger.info(
                     "pgvector database initialized",
                     table=self.table_name,
                 )
-        
+
         except Exception as e:
             logger.error(
                 "Failed to initialize pgvector database",
                 error=str(e),
             )
             raise
-    
+
     async def close(self) -> None:
-        """Close the pgvector database connection."""
-        if self.pool:
-            await self.pool.close()
+        """Close the pgvector database connection.
+
+        Note: The pool is shared, so we don't close it here.
+        Call monitor.db.postgres_pool.close_pool() to close all pools.
+        """
         await super().close()
-    
+
     async def upsert(self, record: EmbeddingRecord) -> bool:
         """
         Insert or update a record in the pgvector database.
-        
+
         Args:
             record: Embedding record to insert or update
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
@@ -142,11 +144,11 @@ class PgVectorDBClient(BaseVectorDBClient):
                     "summary": metadata.get("summary", ""),
                     "word_count": metadata.get("word_count", 0),
                 })
-                
+
                 # Convert embeddings to PostgreSQL vector format
                 text_vec = record.text_embedding if record.text_embedding else None
                 image_vec = record.image_embedding if record.image_embedding else None
-                
+
                 # Upsert the record
                 await conn.execute(f"""
                     INSERT INTO {self.table_name} (
@@ -174,14 +176,14 @@ class PgVectorDBClient(BaseVectorDBClient):
                     image_vec,
                     json.dumps(metadata)
                 )
-                
+
                 logger.debug(
                     "Upserted record in pgvector",
                     id=record.id,
                     title=record.title,
                 )
                 return True
-        
+
         except Exception as e:
             logger.error(
                 "Error upserting record in pgvector",
@@ -189,14 +191,14 @@ class PgVectorDBClient(BaseVectorDBClient):
                 error=str(e),
             )
             return False
-    
+
     async def _upsert_batch(self, records: List[EmbeddingRecord]) -> bool:
         """
         Insert or update a batch of records in the pgvector database.
-        
+
         Args:
             records: Batch of embedding records to insert or update
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
@@ -211,7 +213,7 @@ class PgVectorDBClient(BaseVectorDBClient):
                         "summary": metadata.get("summary", ""),
                         "word_count": metadata.get("word_count", 0),
                     })
-                    
+
                     values.append((
                         record.id,
                         str(record.url),
@@ -223,7 +225,7 @@ class PgVectorDBClient(BaseVectorDBClient):
                         record.image_embedding,
                         json.dumps(metadata)
                     ))
-                
+
                 # Batch upsert
                 await conn.executemany(f"""
                     INSERT INTO {self.table_name} (
@@ -241,13 +243,13 @@ class PgVectorDBClient(BaseVectorDBClient):
                         metadata = EXCLUDED.metadata,
                         updated_at = NOW()
                 """, values)
-                
+
                 logger.debug(
                     "Upserted batch of records in pgvector",
                     count=len(records),
                 )
                 return True
-        
+
         except Exception as e:
             logger.error(
                 "Error upserting batch in pgvector",
@@ -255,14 +257,14 @@ class PgVectorDBClient(BaseVectorDBClient):
                 error=str(e),
             )
             return False
-    
+
     async def get(self, id: str) -> Optional[EmbeddingRecord]:
         """
         Get a record from the pgvector database by ID.
-        
+
         Args:
             id: Record ID
-            
+
         Returns:
             Optional[EmbeddingRecord]: Record if found, None otherwise
         """
@@ -274,20 +276,22 @@ class PgVectorDBClient(BaseVectorDBClient):
                     FROM {self.table_name}
                     WHERE id = $1
                 """, id)
-                
+
                 if row:
                     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                    text_emb = row["text_embedding"]
+                    image_emb = row["image_embedding"]
                     return EmbeddingRecord(
                         id=row["id"],
                         url=row["url"],
                         title=row["title"],
                         publish_date=row["publish_date"],
-                        text_embedding=row["text_embedding"].tolist() if row["text_embedding"] else None,
-                        image_embedding=row["image_embedding"].tolist() if row["image_embedding"] else None,
+                        text_embedding=text_emb.tolist() if text_emb is not None else None,
+                        image_embedding=image_emb.tolist() if image_emb is not None else None,
                         metadata=metadata
                     )
                 return None
-        
+
         except Exception as e:
             logger.error(
                 "Error getting record from pgvector",
@@ -295,18 +299,18 @@ class PgVectorDBClient(BaseVectorDBClient):
                 error=str(e),
             )
             return None
-    
+
     async def get_by_id(self, id: str) -> Optional[EmbeddingRecord]:
         """Alias for get() to match web dashboard expectations."""
         return await self.get(id)
-    
+
     async def delete(self, id: str) -> bool:
         """
         Delete a record from the pgvector database.
-        
+
         Args:
             id: Record ID
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
@@ -316,9 +320,9 @@ class PgVectorDBClient(BaseVectorDBClient):
                     DELETE FROM {self.table_name}
                     WHERE id = $1
                 """, id)
-                
+
                 return result.split()[-1] != "0"
-        
+
         except Exception as e:
             logger.error(
                 "Error deleting record from pgvector",
@@ -326,7 +330,7 @@ class PgVectorDBClient(BaseVectorDBClient):
                 error=str(e),
             )
             return False
-    
+
     async def search_by_text(
         self,
         text_embedding: List[float],
@@ -335,12 +339,12 @@ class PgVectorDBClient(BaseVectorDBClient):
     ) -> List[Tuple[EmbeddingRecord, float]]:
         """
         Search for records by text embedding similarity.
-        
+
         Args:
             text_embedding: Text embedding vector
             limit: Maximum number of results
             min_score: Minimum similarity score
-            
+
         Returns:
             List[Tuple[EmbeddingRecord, float]]: List of records and scores
         """
@@ -357,30 +361,32 @@ class PgVectorDBClient(BaseVectorDBClient):
                     ORDER BY text_embedding <=> $1::vector
                     LIMIT $3
                 """, text_embedding, min_score, limit)
-                
+
                 results = []
                 for row in rows:
                     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                    text_emb = row["text_embedding"]
+                    image_emb = row["image_embedding"]
                     record = EmbeddingRecord(
                         id=row["id"],
                         url=row["url"],
                         title=row["title"],
                         publish_date=row["publish_date"],
-                        text_embedding=row["text_embedding"].tolist() if row["text_embedding"] else None,
-                        image_embedding=row["image_embedding"].tolist() if row["image_embedding"] else None,
+                        text_embedding=text_emb.tolist() if text_emb is not None else None,
+                        image_embedding=image_emb.tolist() if image_emb is not None else None,
                         metadata=metadata
                     )
                     results.append((record, row["score"]))
-                
+
                 return results
-        
+
         except Exception as e:
             logger.error(
                 "Error searching by text in pgvector",
                 error=str(e),
             )
             return []
-    
+
     async def search_by_image(
         self,
         image_embedding: List[float],
@@ -389,12 +395,12 @@ class PgVectorDBClient(BaseVectorDBClient):
     ) -> List[Tuple[EmbeddingRecord, float]]:
         """
         Search for records by image embedding similarity.
-        
+
         Args:
             image_embedding: Image embedding vector
             limit: Maximum number of results
             min_score: Minimum similarity score
-            
+
         Returns:
             List[Tuple[EmbeddingRecord, float]]: List of records and scores
         """
@@ -410,30 +416,32 @@ class PgVectorDBClient(BaseVectorDBClient):
                     ORDER BY image_embedding <=> $1::vector
                     LIMIT $3
                 """, image_embedding, min_score, limit)
-                
+
                 results = []
                 for row in rows:
                     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                    text_emb = row["text_embedding"]
+                    image_emb = row["image_embedding"]
                     record = EmbeddingRecord(
                         id=row["id"],
                         url=row["url"],
                         title=row["title"],
                         publish_date=row["publish_date"],
-                        text_embedding=row["text_embedding"].tolist() if row["text_embedding"] else None,
-                        image_embedding=row["image_embedding"].tolist() if row["image_embedding"] else None,
+                        text_embedding=text_emb.tolist() if text_emb is not None else None,
+                        image_embedding=image_emb.tolist() if image_emb is not None else None,
                         metadata=metadata
                     )
                     results.append((record, row["score"]))
-                
+
                 return results
-        
+
         except Exception as e:
             logger.error(
                 "Error searching by image in pgvector",
                 error=str(e),
             )
             return []
-    
+
     async def search_hybrid(
         self,
         text_embedding: List[float],
@@ -445,7 +453,7 @@ class PgVectorDBClient(BaseVectorDBClient):
     ) -> List[Tuple[EmbeddingRecord, float]]:
         """
         Search for records using both text and image embeddings.
-        
+
         Args:
             text_embedding: Text embedding vector
             image_embedding: Optional image embedding vector
@@ -453,13 +461,13 @@ class PgVectorDBClient(BaseVectorDBClient):
             image_weight: Weight for image similarity (0.0 to 1.0)
             limit: Maximum number of results
             min_score: Minimum combined similarity score
-            
+
         Returns:
             List[Tuple[EmbeddingRecord, float]]: List of records and scores
         """
         if not image_embedding:
             return await self.search_by_text(text_embedding, limit, min_score)
-        
+
         try:
             async with self.pool.acquire() as conn:
                 # Hybrid search with weighted combination
@@ -475,35 +483,37 @@ class PgVectorDBClient(BaseVectorDBClient):
                     ORDER BY score DESC
                     LIMIT $3
                 """, text_embedding, image_embedding, limit)
-                
+
                 results = []
                 for row in rows:
                     if row["score"] >= min_score:
                         metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                        text_emb = row["text_embedding"]
+                        image_emb = row["image_embedding"]
                         record = EmbeddingRecord(
                             id=row["id"],
                             url=row["url"],
                             title=row["title"],
                             publish_date=row["publish_date"],
-                            text_embedding=row["text_embedding"].tolist() if row["text_embedding"] else None,
-                            image_embedding=row["image_embedding"].tolist() if row["image_embedding"] else None,
+                            text_embedding=text_emb.tolist() if text_emb is not None else None,
+                            image_embedding=image_emb.tolist() if image_emb is not None else None,
                             metadata=metadata
                         )
                         results.append((record, row["score"]))
-                
+
                 return results
-        
+
         except Exception as e:
             logger.error(
                 "Error in hybrid search in pgvector",
                 error=str(e),
             )
             return []
-    
+
     async def count(self) -> int:
         """
         Count the number of records in the pgvector database.
-        
+
         Returns:
             int: Number of records
         """
@@ -511,21 +521,21 @@ class PgVectorDBClient(BaseVectorDBClient):
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow(f"SELECT COUNT(*) FROM {self.table_name}")
                 return row["count"]
-        
+
         except Exception as e:
             logger.error(
                 "Error counting records in pgvector",
                 error=str(e),
             )
             return 0
-    
+
     async def list_all(self, limit: int = 1000) -> List[EmbeddingRecord]:
         """
         List all records in the database.
-        
+
         Args:
             limit: Maximum number of records to return
-            
+
         Returns:
             List[EmbeddingRecord]: List of records
         """
@@ -538,51 +548,52 @@ class PgVectorDBClient(BaseVectorDBClient):
                     ORDER BY publish_date DESC NULLS LAST
                     LIMIT $1
                 """, limit)
-                
+
                 records = []
                 for row in rows:
                     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-                    # Merge source and author into metadata
                     metadata["source"] = row["source"]
                     metadata["author"] = row["author"]
-                    
+                    text_emb = row["text_embedding"]
+                    image_emb = row["image_embedding"]
+
                     record = EmbeddingRecord(
                         id=row["id"],
                         url=row["url"],
                         title=row["title"],
                         publish_date=row["publish_date"],
-                        text_embedding=row["text_embedding"].tolist() if row["text_embedding"] else None,
-                        image_embedding=row["image_embedding"].tolist() if row["image_embedding"] else None,
+                        text_embedding=text_emb.tolist() if text_emb is not None else None,
+                        image_embedding=image_emb.tolist() if image_emb is not None else None,
                         metadata=metadata
                     )
                     records.append(record)
-                
+
                 return records
-        
+
         except Exception as e:
             logger.error(
                 "Error listing all records from pgvector",
                 error=str(e),
             )
             return []
-    
+
     async def clear(self) -> bool:
         """
         Clear all records from the pgvector database.
-        
+
         Returns:
             bool: True if successful, False otherwise
         """
         try:
             async with self.pool.acquire() as conn:
                 await conn.execute(f"TRUNCATE TABLE {self.table_name}")
-                
+
                 logger.info(
                     "Cleared all records from pgvector",
                     table=self.table_name,
                 )
                 return True
-        
+
         except Exception as e:
             logger.error(
                 "Error clearing records from pgvector",
