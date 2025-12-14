@@ -28,15 +28,12 @@ dependencies = [
     "python-multipart>=0.0.12",
     "certifi>=2024.8.30",
     "bleach>=6.1.0",
-    "qdrant-client>=1.12.0",
-    "chromadb>=0.5.15",
-    "pinecone-client>=5.0.0",
     "openai>=1.54.0",
     "sentence-transformers>=3.2.0",
     "transformers>=4.46.0",
     "torch>=2.5.0",
     "asyncpg>=0.29.0",
-    "pgvector>=0.3.0",
+    "pgvector>=0.4.0",
 ]
 
 [project.scripts]

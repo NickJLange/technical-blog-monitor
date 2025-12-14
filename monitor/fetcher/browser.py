@@ -271,6 +271,10 @@ class BrowserPool:
         
         logger.info("Browser pool shut down")
     
+    async def close(self) -> None:
+        """Alias for shutdown() for compatibility with context manager patterns."""
+        await self.shutdown()
+    
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up idle browser contexts."""
         try:

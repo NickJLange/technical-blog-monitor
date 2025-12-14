@@ -79,7 +79,7 @@ class AppContext:
         from monitor.cache import get_cache_client
         
         logger.info("Initializing cache client")
-        self.cache_client = await get_cache_client(self.settings.cache)
+        self.cache_client = await get_cache_client(self.settings.cache, self.settings.vector_db)
         await self.exit_stack.enter_async_context(self.cache_client)
         logger.info("Cache client initialized", type=type(self.cache_client).__name__)
     

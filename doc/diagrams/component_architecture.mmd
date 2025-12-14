@@ -19,8 +19,8 @@ graph TD
     end
 
     subgraph Storage["Data Store"]
-        cache[("File/Redis Cache\n(Raw HTML/Meta)")]
-        vdb[("Vector Database\n(Qdrant/Chroma)")]
+        cache[("Cache\n(Postgres/Filesystem/Memory)")]
+        vdb[("Vector Database\n(PGVector/Qdrant/Chroma)")]
     end
 
     CLI --> drive
