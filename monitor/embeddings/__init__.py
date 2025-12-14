@@ -251,7 +251,7 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
         """
         super().__init__(config)
         self.text_dim = config.embedding_dimensions or 1536  # Default to OpenAI dimensions
-        self.image_dim = config.image_vector_dimension or 512  # Default to CLIP dimensions
+        self.image_dim = getattr(config, "image_embedding_dimensions", 512) or 512  # Default to CLIP dimensions
         
         # Seed the random number generator for reproducible embeddings
         self.rng = np.random.RandomState(42)
@@ -272,7 +272,7 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
         
         for text in texts:
             # Generate a deterministic seed from the text
-            text_hash = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2**32)
+            text_hash = int(hashlib.sha256(text.encode()).hexdigest(), 16) % (2**32)
             
             # Create a separate random generator for this text
             text_rng = np.random.RandomState(text_hash)
@@ -306,7 +306,7 @@ class DummyEmbeddingClient(BaseEmbeddingClient):
         
         for path in image_paths:
             # Generate a deterministic seed from the path
-            path_hash = int(hashlib.md5(str(path).encode()).hexdigest(), 16) % (2**32)
+            path_hash = int(hashlib.sha256(str(path).encode()).hexdigest(), 16) % (2**32)
             
             # Create a separate random generator for this image
             path_rng = np.random.RandomState(path_hash)
@@ -512,6 +512,14 @@ async def get_embedding_client(config: EmbeddingConfig) -> EmbeddingClient:
     elif config.text_model_type == EmbeddingModelType.SENTENCE_TRANSFORMERS:
         # For now, treat sentence-transformers as HuggingFace
         return HuggingFaceEmbeddingClient(config)
+    
+    elif config.text_model_type == EmbeddingModelType.OLLAMA:
+        # Use Ollama for local embeddings
+        from monitor.embeddings.ollama import OllamaEmbeddingClient
+        return OllamaEmbeddingClient(
+            config=config,
+            model=config.text_model_name or "nomic-embed-text:v1.5",
+        )
     
     elif config.text_model_type == EmbeddingModelType.CUSTOM:
         # For custom models, use the dummy client for now

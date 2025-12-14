@@ -271,6 +271,10 @@ class BrowserPool:
         
         logger.info("Browser pool shut down")
     
+    async def close(self) -> None:
+        """Alias for shutdown() for compatibility with context manager patterns."""
+        await self.shutdown()
+    
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up idle browser contexts."""
         try:
@@ -391,8 +395,9 @@ class BrowserPool:
             try:
                 # Navigate to the URL
                 start_time = time.time()
+                url_str = str(url)
                 response = await page.goto(
-                    url,
+                    url_str,
                     wait_until=wait_until,
                     timeout=timeout,
                 )
@@ -452,7 +457,9 @@ class BrowserPool:
         if path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"screenshot_{timestamp}.{format}"
-            path = Path(self.config.local_storage_path) / "screenshots" / filename
+            base_dir = self.config.screenshot_dir or (Path.cwd() / "data" / "screenshots")
+            base_dir.mkdir(parents=True, exist_ok=True)
+            path = base_dir / filename
         else:
             path = Path(path)
         

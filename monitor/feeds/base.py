@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
+import bleach
 from bs4 import BeautifulSoup
 from pydantic import HttpUrl
 from tenacity import (
@@ -127,8 +128,8 @@ class FeedProcessor(abc.ABC):
         Returns:
             str: Feed fingerprint
         """
-        # Default implementation uses MD5 hash of the content
-        return hashlib.md5(content).hexdigest()
+        # Default implementation uses a stable hash of the content (not for security)
+        return hashlib.sha256(content).hexdigest()
     
     def get_cache_key(self) -> str:
         """
@@ -138,7 +139,7 @@ class FeedProcessor(abc.ABC):
             str: Cache key
         """
         feed_url = str(self.url)
-        return f"{FEED_CACHE_PREFIX}{hashlib.md5(feed_url.encode()).hexdigest()}"
+        return f"{FEED_CACHE_PREFIX}{hashlib.sha256(feed_url.encode()).hexdigest()}"
 
 
 class CacheClient(Protocol):
@@ -230,6 +231,10 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     # Check URL patterns first
     url = str(config.url).lower()
     
+    if any(pattern in url for pattern in ['/json', '/feed.json', '.json']):
+        logger.debug("Using JSON processor based on URL pattern", feed_name=config.name)
+        return JSONFeedProcessor(config)
+
     if any(pattern in url for pattern in ['/rss', '/rss.xml', '/feed', '.rss']):
         logger.debug("Using RSS processor based on URL pattern", feed_name=config.name)
         return RSSFeedProcessor(config)
@@ -237,10 +242,6 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     if any(pattern in url for pattern in ['/atom', '/atom.xml', '.atom']):
         logger.debug("Using Atom processor based on URL pattern", feed_name=config.name)
         return AtomFeedProcessor(config)
-    
-    if any(pattern in url for pattern in ['/json', '/feed.json', '.json']):
-        logger.debug("Using JSON processor based on URL pattern", feed_name=config.name)
-        return JSONFeedProcessor(config)
     
     # If URL pattern doesn't help, try to fetch the feed and check content
     try:
@@ -445,7 +446,7 @@ async def parse_feed_entries(
             
             # Generate a unique ID
             entry_id = entry.get('id') or entry.get('guid') or url
-            post_id = hashlib.md5(f"{feed_name}:{entry_id}".encode()).hexdigest()
+            post_id = hashlib.sha256(f"{feed_name}:{entry_id}".encode()).hexdigest()
             
             # Parse dates
             publish_date = None
@@ -492,10 +493,10 @@ async def parse_feed_entries(
             # Clean up HTML in summary
             if summary and '<' in summary:
                 try:
-                    soup = BeautifulSoup(summary, 'html.parser')
-                    summary = soup.get_text(separator=' ', strip=True)
+                    # Use bleach to sanitize and strip tags
+                    summary = bleach.clean(summary, tags=[], strip=True)
                 except Exception:
-                    # If parsing fails, use a simple regex to strip tags
+                    # Fallback if bleach fails (unlikely)
                     summary = re.sub(r'<[^>]+>', '', summary)
             
             # Limit summary length

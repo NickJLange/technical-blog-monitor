@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.envrc
+
+# Poetry
+poetry.lock
+
+# OS files
+.DS_Store
+
+# Local data and caches
+/data/
+/cache/
+monitor/cache/meta/
+monitor/cache/data/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Playwright cache
+playwright/.cache/
+
+# Test & coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.idea/
+

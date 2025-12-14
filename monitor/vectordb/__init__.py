@@ -919,7 +919,11 @@ async def get_vector_db_client(config: VectorDBConfig) -> VectorDBClient:
     Raises:
         ValueError: If the vector database type is invalid or not supported
     """
-    if config.db_type == VectorDBType.QDRANT:
+    if config.db_type == VectorDBType.PGVECTOR:
+        from monitor.vectordb.pgvector import PgVectorDBClient
+        client = PgVectorDBClient(config)
+    
+    elif config.db_type == VectorDBType.QDRANT:
         client = QdrantVectorDBClient(config)
     
     elif config.db_type == VectorDBType.CHROMA:

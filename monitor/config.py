@@ -68,13 +68,29 @@ class BrowserConfig(BaseModel):
     disable_javascript: bool = False
     block_ads: bool = True
     stealth_mode: bool = True
+    # Optional directory where screenshots are stored. If not provided, defaults to
+    # "<cwd>/data/screenshots" and will be created on demand.
+    screenshot_dir: Optional[Path] = None
+
+    @field_validator("screenshot_dir")
+    def _ensure_screenshot_dir(cls, v: Optional[Path]) -> Optional[Path]:
+        if v is not None:
+            v.mkdir(parents=True, exist_ok=True)
+        return v
+
+
+class CacheBackend(str, Enum):
+    """Cache backend types supported."""
+    MEMORY = "memory"
+    FILESYSTEM = "filesystem"
+    POSTGRES = "postgres"
 
 
 class CacheConfig(BaseModel):
     """Configuration for the caching layer."""
     enabled: bool = True
-    redis_url: Optional[str] = None
-    redis_password: Optional[SecretStr] = None
+    backend: CacheBackend = CacheBackend.POSTGRES
+    postgres_dsn: Optional[str] = None
     cache_ttl_hours: int = 24 * 7  # 1 week default
     local_storage_path: Path = Field(default=Path("./cache"))
     
@@ -90,6 +106,7 @@ class EmbeddingModelType(str, Enum):
     OPENAI = "openai"
     HUGGINGFACE = "huggingface"
     SENTENCE_TRANSFORMERS = "sentence_transformers"
+    OLLAMA = "ollama"
     CUSTOM = "custom"
 
 
@@ -105,7 +122,10 @@ class EmbeddingConfig(BaseModel):
     huggingface_api_key: Optional[SecretStr] = None
     
     # Model parameters
+    # Text embedding dimensions; depends on the selected model
     embedding_dimensions: Optional[int] = None
+    # Image embedding dimensions (e.g., CLIP defaults to 512)
+    image_embedding_dimensions: int = 512
     batch_size: int = 8
     max_retries: int = 3
     timeout_seconds: int = 30
@@ -131,6 +151,7 @@ class VectorDBType(str, Enum):
     PINECONE = "pinecone"
     MILVUS = "milvus"
     WEAVIATE = "weaviate"
+    PGVECTOR = "pgvector"
 
 
 class VectorDBConfig(BaseModel):
@@ -163,7 +184,7 @@ class VectorDBConfig(BaseModel):
 
 class SchedulerConfig(BaseModel):
     """Configuration for the job scheduler."""
-    job_store_type: str = "memory"  # memory, redis, sqlalchemy
+    job_store_type: str = "memory"  # memory, sqlalchemy
     job_store_url: Optional[str] = None
     max_instances: int = 1
     timezone: str = "UTC"
@@ -179,6 +200,15 @@ class MetricsConfig(BaseModel):
     log_metrics: bool = True
     log_level: LogLevel = LogLevel.INFO
     structured_logging: bool = True
+
+
+class WebDashboardConfig(BaseModel):
+    """Configuration for the web dashboard."""
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 8080
+    auto_refresh_seconds: int = 30
+    show_mock_data: bool = True  # Show mock data when no real data available
 
 
 class ArticleProcessingConfig(BaseModel):
@@ -267,6 +297,7 @@ class Settings(BaseSettings):
     article_processing: ArticleProcessingConfig = Field(default_factory=ArticleProcessingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    web_dashboard: WebDashboardConfig = Field(default_factory=WebDashboardConfig)
     
     # Runtime settings
     max_concurrent_tasks: int = 10
@@ -288,6 +319,20 @@ class Settings(BaseSettings):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         return self
     
+    @field_validator("feeds", mode="before")
+    @classmethod
+    def _coerce_feeds_from_mapping(cls, v):
+        """Allow FEEDS__0__... style env to load as a list in Pydantic v2.
+        When pydantic-settings assembles nested env for FEEDS, it may produce
+        a mapping like {"0": {...}, "1": {...}}; convert to a list ordered by key.
+        """
+        if isinstance(v, dict):
+            try:
+                return [v[k] for k in sorted(v.keys(), key=lambda x: int(x))]
+            except Exception:
+                return list(v.values())
+        return v
+
     @field_validator("feeds")
     def validate_feeds(cls, feeds: List[FeedConfig]) -> List[FeedConfig]:
         """Validate that feed names are unique."""
@@ -308,6 +353,3 @@ def load_settings() -> Settings:
     """Load settings from environment variables and .env file."""
     return Settings()
 
-
-# Default instance for easy import
-settings = load_settings()

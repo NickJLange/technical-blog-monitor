@@ -9,6 +9,7 @@ additional parsing and cleaning.
 import asyncio
 import re
 import time
+import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse
@@ -112,7 +113,7 @@ async def extract_article_content(
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    url,
+                    str(url),
                     follow_redirects=True,
                     timeout=30.0,
                 )
@@ -140,7 +141,7 @@ async def extract_article_content(
         # Extract metadata
         metadata = await extract_article_metadata(
             html_content,
-            url,
+            str(url),
             title,
             thread_pool
         )

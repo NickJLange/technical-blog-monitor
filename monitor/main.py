@@ -22,12 +22,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import structlog
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from prometheus_client import start_http_server
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from monitor.config import LogLevel, Settings, load_settings
+from monitor.i18n import _
 
 # Set up structured logger
 logger = structlog.get_logger()
@@ -79,7 +79,7 @@ class AppContext:
         from monitor.cache import get_cache_client
         
         logger.info("Initializing cache client")
-        self.cache_client = await get_cache_client(self.settings.cache)
+        self.cache_client = await get_cache_client(self.settings.cache, self.settings.vector_db)
         await self.exit_stack.enter_async_context(self.cache_client)
         logger.info("Cache client initialized", type=type(self.cache_client).__name__)
     
@@ -121,20 +121,10 @@ class AppContext:
         
         # Set up job stores
         jobstores = {"default": MemoryJobStore()}
-        if (self.settings.scheduler.job_store_type == "redis" and 
-                self.settings.scheduler.job_store_url):
-            jobstores["redis"] = RedisJobStore(url=self.settings.scheduler.job_store_url)
         
-        # Set up executors
-        executors = {
-            "default": AsyncIOExecutor(),
-            "threadpool": self.thread_pool
-        }
-        
-        # Create scheduler
+        # Create scheduler (use default AsyncIO executor)
         self.scheduler = AsyncIOScheduler(
             jobstores=jobstores,
-            executors=executors,
             timezone=self.settings.scheduler.timezone,
             job_defaults={
                 "coalesce": self.settings.scheduler.coalesce,
@@ -489,7 +479,7 @@ async def run_once(settings: Settings) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Technical Blog Monitor - Track and embed technical blog posts"
+        description=_("Technical Blog Monitor - Track and embed technical blog posts")
     )
     
     parser.add_argument(

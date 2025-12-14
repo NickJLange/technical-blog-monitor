@@ -11,7 +11,7 @@ A high-performance Python daemon that tracks technical blogs from major companie
 | **Async & Multithreaded** | Built on `asyncio` + thread pools for optimal I/O and CPU throughput. |
 | **Headless rendering** | Uses Playwright (Chromium/Firefox/WebKit) to fully render pages and capture full-page screenshots. |
 | **Content extraction** | Robust article parser turns raw HTML into clean text, metadata, and media links. |
-| **Caching layer** | Redis + local filesystem cache to avoid redundant downloads and re-processing. |
+| **Caching layer** | PostgreSQL-based cache with TTL support to avoid redundant downloads and re-processing. |
 | **Pluggable embeddings** | Generate text and image embeddings with OpenAI, HuggingFace, Sentence-Transformers, or custom models. |
 | **Vector DB abstraction** | Works with Qdrant, Chroma, Pinecone, Milvus, Weaviate (choose at runtime). |
 | **Observability** | Structured JSON logging, Prometheus metrics, graceful shutdown & retries. |
@@ -32,7 +32,7 @@ technical-blog-monitor/
 │   ├── extractor/           # Text/image extraction logic
 │   ├── embeddings/          # Model wrappers
 │   ├── vectordb/            # DB abstraction layer
-│   ├── cache/               # Redis & filesystem helpers
+│   ├── cache/               # PostgreSQL & filesystem helpers
 │   └── tests/               # Pytest suite
 ├── Dockerfile
 ├── pyproject.toml           # Poetry dependency spec
@@ -49,12 +49,14 @@ technical-blog-monitor/
 git clone https://github.com/your-org/technical-blog-monitor.git
 cd technical-blog-monitor
 
-# Install Python deps (requires Python ≥3.11)
-pip install poetry
-poetry install
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
 
 # Install Playwright browsers (one-time)
-poetry run playwright install
+uv run playwright install
 ```
 
 ### 2. Configure
@@ -74,13 +76,13 @@ Key items to set:
 ### 3. Run once (debug)
 
 ```bash
-poetry run monitor --once --log-level DEBUG
+uv run monitor --once --log-level DEBUG
 ```
 
 ### 4. Daemon mode
 
 ```bash
-poetry run monitor                      # runs indefinitely
+uv run monitor                      # runs indefinitely
 ```
 
 ### 5. Docker
@@ -106,7 +108,7 @@ All settings are typed in `monitor/config.py` and can be supplied via:
 |--------|---------|
 | `FEEDS__` | Multiple feed definitions (name, url, interval, enabled) |
 | `BROWSER__` | Playwright options (headless, viewport, concurrency) |
-| `CACHE__` | Redis URL, TTL, local cache path |
+| `CACHE__` | PostgreSQL DSN, TTL, backend selection |
 | `EMBEDDING__` | Model selection, API keys, batch size |
 | `VECTOR_DB__` | DB type, connection, collection & metric |
 | `SCHEDULER__` | APScheduler store & timing options |
@@ -121,7 +123,7 @@ Nested keys use double underscores (`__`) as delimiter.
 ### Process a specific feed
 
 ```bash
-poetry run monitor --feed "Google Cloud Blog" --once
+uv run monitor --feed "Google Cloud Blog" --once
 ```
 
 ### Query stored vectors (example with Qdrant)
@@ -144,8 +146,8 @@ for point in hits:
 ### Pre-commit setup
 
 ```bash
-poetry install --with dev
-pre-commit install
+uv sync --group dev
+uv run pre-commit install
 ```
 
 Hooks run `black`, `ruff`, `isort`, `mypy`, and unit tests.
@@ -153,14 +155,16 @@ Hooks run `black`, `ruff`, `isort`, `mypy`, and unit tests.
 ### Testing
 
 ```bash
-pytest -q
+uv run pytest -q
 ```
+
+For detailed testing instructions, see [TESTING.md](TESTING.md).
 
 ### Linting & type-checking
 
 ```bash
-ruff .          # style & static checks
-mypy monitor/   # type safety
+uv run ruff check .          # style & static checks
+uv run mypy monitor/   # type safety
 ```
 
 ### Branching
