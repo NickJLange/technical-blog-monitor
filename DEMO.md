@@ -67,11 +67,24 @@ The JSON/RSS processor autodetects format.
 
 Key switches for the demo:
 
-```
+```bash
+# Cache configuration (choose one backend)
+CACHE__BACKEND=filesystem           # Options: memory, filesystem, postgres
+CACHE__LOCAL_STORAGE_PATH=./cache   # Only required if CACHE__BACKEND=filesystem
+# CACHE__POSTGRES_DSN=postgresql://user:pass@localhost:5432/db  # Only if CACHE__BACKEND=postgres
+
+# Embeddings
 EMBEDDING__TEXT_MODEL_TYPE=custom   # uses DummyEmbeddingClient
-VECTOR_DB__DB_TYPE=qdrant           # stub -> in-memory
-CACHE__ENABLED=true                 # filesystem cache ./cache
+
+# Vector Database
+VECTOR_DB__DB_TYPE=qdrant           # Options: pgvector, qdrant, chroma, pinecone, milvus, weaviate
+VECTOR_DB__CONNECTION_STRING=memory://  # In-memory for demo
 ```
+
+**Note:** 
+- Use `CACHE__BACKEND=memory` for fastest local testing (no disk I/O)
+- Use `CACHE__BACKEND=filesystem` to persist cached articles to disk
+- Use `CACHE__BACKEND=postgres` with `CACHE__POSTGRES_DSN` for production unified storage
 
 ### 3.3  One-shot run
 

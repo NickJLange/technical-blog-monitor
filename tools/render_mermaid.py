@@ -1,11 +1,16 @@
 import sys
 import asyncio
+from html import escape
 from pathlib import Path
 from playwright.async_api import async_playwright
 
 async def render_mermaid(input_path: Path, output_path: Path):
     with open(input_path, 'r') as f:
         mermaid_code = f.read()
+    
+    # HTML-escape the mermaid code to prevent injection attacks
+    # This ensures characters like <, >, &, " are encoded while preserving newlines
+    escaped_mermaid_code = escape(mermaid_code)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -20,7 +25,7 @@ async def render_mermaid(input_path: Path, output_path: Path):
     </head>
     <body>
         <pre class="mermaid">
-{mermaid_code}
+{escaped_mermaid_code}
         </pre>
         <script type="module">
             import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
