@@ -94,6 +94,14 @@ class RSSFeedProcessor(FeedProcessor):
                     follow_redirects=True,
                 )
                 response.raise_for_status()
+            elif e.response.status_code == 403 and "medium.com" in url_str.lower():
+                # Medium blocks direct HTTP requests - need browser rendering
+                logger.info(
+                    "Medium blog detected with 403, would need browser rendering",
+                    url=self.url,
+                    note="Requires Playwright browser pool for Medium blogs"
+                )
+                raise
             else:
                 raise
         

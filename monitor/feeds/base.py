@@ -255,7 +255,7 @@ async def fetch_with_retry(
     return response
 
 
-async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
+async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserPool] = None) -> FeedProcessor:
     """
     Get the appropriate feed processor for a feed configuration.
     
@@ -264,6 +264,7 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     
     Args:
         config: Feed configuration
+        browser_pool: Optional BrowserPool for processors that need browser rendering
         
     Returns:
         FeedProcessor: Feed processor instance
@@ -275,9 +276,15 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     from monitor.feeds.atom import AtomFeedProcessor
     from monitor.feeds.json import JSONFeedProcessor
     from monitor.feeds.rss import RSSFeedProcessor
+    from monitor.feeds.medium import MediumFeedProcessor
     
     # Check URL patterns first
     url = str(config.url).lower()
+    
+    # Check for Medium blogs first - they need special handling
+    if 'medium.com' in url:
+        logger.debug("Using Medium processor for Medium blog", feed_name=config.name)
+        return MediumFeedProcessor(config, browser_pool=browser_pool)
     
     if any(pattern in url for pattern in ['/json', '/feed.json', '.json']):
         logger.debug("Using JSON processor based on URL pattern", feed_name=config.name)
@@ -652,8 +659,8 @@ async def process_feed_posts(
     logger.info("Processing feed", feed_name=feed_config.name, url=feed_config.url)
     
     try:
-        # Get the appropriate feed processor
-        processor = await get_feed_processor(feed_config)
+        # Get the appropriate feed processor (pass browser pool for Medium blogs)
+        processor = await get_feed_processor(feed_config, browser_pool=browser_pool)
         
         # Discover new posts
         new_posts = await discover_new_posts(
