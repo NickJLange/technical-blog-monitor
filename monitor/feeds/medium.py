@@ -61,33 +61,26 @@ class MediumFeedProcessor(FeedProcessor):
         logger.info("Fetching Medium blog using browser", url=self.url)
         
         try:
-            # Render the page using the browser pool
-            screenshot_path = await self.browser_pool.render_and_screenshot(str(self.url))
+            # Render the page using the browser pool to get actual content
+            page, page_info = await self.browser_pool.render_page(str(self.url))
             
-            # Get the rendered HTML from the page
-            # Note: This requires an enhancement to browser pool to return HTML content
-            # For now, we'll try a direct fetch with browser headers
-            
-            logger.debug("Page rendered successfully", url=self.url)
-            
-            # Try again with browser-like headers but different user agent
-            # This sometimes works even for Medium with the right approach
-            headers = dict(self.headers)
-            headers["Referer"] = str(self.url)
-            headers["Sec-Fetch-Mode"] = "navigate"
-            headers["Sec-Fetch-Dest"] = "document"
-            
-            response = await client.get(
-                str(self.url),
-                headers=headers,
-                follow_redirects=True,
-            )
-            response.raise_for_status()
-            return response.content
+            try:
+                # Get the rendered HTML from the page
+                content = await page.content()
+                logger.debug(
+                    "Page rendered successfully via browser",
+                    url=self.url,
+                    content_length=len(content),
+                    page_title=page_info.get("title")
+                )
+                return content.encode('utf-8')
+            finally:
+                # Make sure to close the page
+                await page.close()
             
         except Exception as e:
-            logger.warning(
-                "Failed to fetch Medium blog",
+            logger.error(
+                "Failed to fetch Medium blog via browser",
                 url=self.url,
                 error=str(e),
             )
