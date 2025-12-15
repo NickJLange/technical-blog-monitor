@@ -277,14 +277,19 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
     from monitor.feeds.json import JSONFeedProcessor
     from monitor.feeds.rss import RSSFeedProcessor
     from monitor.feeds.medium import MediumFeedProcessor
+    from monitor.feeds.spotify import SpotifyFeedProcessor
     
     # Check URL patterns first
     url = str(config.url).lower()
     
-    # Check for Medium blogs first - they need special handling
+    # Check for sites that require browser rendering first
     if 'medium.com' in url:
         logger.debug("Using Medium processor for Medium blog", feed_name=config.name)
         return MediumFeedProcessor(config, browser_pool=browser_pool)
+    
+    if 'engineering.atspotify.com' in url:
+        logger.debug("Using Spotify processor for Spotify Engineering blog", feed_name=config.name)
+        return SpotifyFeedProcessor(config, browser_pool=browser_pool)
     
     if any(pattern in url for pattern in ['/json', '/feed.json', '.json']):
         logger.debug("Using JSON processor based on URL pattern", feed_name=config.name)
