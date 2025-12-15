@@ -70,8 +70,6 @@ class RSSFeedProcessor(FeedProcessor):
         # Some sites reject specific Accept headers (e.g., Uber)
         # If we get a 406, we'll retry with a more general Accept header
         url_str = str(self.url)
-        if "uber.com" in url_str.lower():
-            headers["Accept"] = "*/*"
         
         # Make the request
         try:
@@ -89,6 +87,7 @@ class RSSFeedProcessor(FeedProcessor):
                     url=self.url,
                 )
                 headers["Accept"] = "*/*"
+                headers["Accept-Encoding"] = "gzip"
                 response = await client.get(
                     url_str,
                     headers=headers,
