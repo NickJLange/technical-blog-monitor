@@ -278,6 +278,7 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
     from monitor.feeds.rss import RSSFeedProcessor
     from monitor.feeds.medium import MediumFeedProcessor
     from monitor.feeds.spotify import SpotifyFeedProcessor
+    from monitor.feeds.browser_fallback import BrowserFallbackFeedProcessor
     
     # Check URL patterns first
     url = str(config.url).lower()
@@ -286,6 +287,20 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
     if 'medium.com' in url:
         logger.debug("Using Medium processor for Medium blog", feed_name=config.name)
         return MediumFeedProcessor(config, browser_pool=browser_pool)
+    
+    # Check for Cloudflare-protected sites that need browser fallback
+    cloudflare_sites = [
+        'openai.com',
+        'careersatdoordash.com',
+        'docker.com',
+        'twitter.com',
+        'x.com',
+        'meta.com',
+        'facebook.com',
+    ]
+    if any(site in url for site in cloudflare_sites):
+        logger.debug("Using browser fallback processor for Cloudflare-protected site", feed_name=config.name)
+        return BrowserFallbackFeedProcessor(config, browser_pool=browser_pool)
     
     if 'engineering.atspotify.com' in url:
         logger.debug("Using Spotify processor for Spotify Engineering blog", feed_name=config.name)
