@@ -323,10 +323,19 @@ class RSSFeedProcessor(FeedProcessor):
                                 if time_elem:
                                     published = time_elem.get_text(strip=True)
                                 
+                                # Try to extract author from article or nearby elements
+                                author = None
+                                author_elem = article.find(class_=lambda x: x and 'author' in x.lower())
+                                if not author_elem:
+                                    author_elem = article.find('span', {'itemprop': 'author'})
+                                if author_elem:
+                                    author = author_elem.get_text(strip=True)
+                                
                                 entries.append({
                                     'title': title,
                                     'link': href,
                                     'published': published,
+                                    'author': author,
                                 })
                 
                 # Check if Strategy 1 found actual blog articles (not navigation)
@@ -358,10 +367,19 @@ class RSSFeedProcessor(FeedProcessor):
                                     if time_elem:
                                         published = time_elem.get_text(strip=True)
                                     
+                                    # Try to extract author from container
+                                    author = None
+                                    author_elem = container.find(class_=lambda x: x and 'author' in x.lower())
+                                    if not author_elem:
+                                        author_elem = container.find('span', {'itemprop': 'author'})
+                                    if author_elem:
+                                        author = author_elem.get_text(strip=True)
+                                    
                                     entries.append({
                                         'title': title,
                                         'link': href,
                                         'published': published,
+                                        'author': author,
                                     })
                 
                 # Strategy 3: Look for links that look like article URLs
@@ -414,10 +432,25 @@ class RSSFeedProcessor(FeedProcessor):
                         if time_elem:
                             published = time_elem.get_text(strip=True)
                         
+                        # Try to extract author from nearby elements
+                        author = None
+                        author_elem = link.find_next(class_=lambda x: x and 'author' in x.lower())
+                        if not author_elem:
+                            # Try to find in parent container
+                            parent = link.parent
+                            while parent and parent.name != 'body':
+                                author_elem = parent.find(class_=lambda x: x and 'author' in x.lower())
+                                if author_elem:
+                                    break
+                                parent = parent.parent
+                        if author_elem:
+                            author = author_elem.get_text(strip=True)
+                        
                         entries.append({
                             'title': title,
                             'link': href,
                             'published': published,
+                            'author': author,
                         })
                 
                 # Deduplicate by URL
