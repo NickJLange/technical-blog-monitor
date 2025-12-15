@@ -25,15 +25,32 @@ This document outlines a list of opinionated refactoring goals to further improv
     *   Status: Working in production with HNSW indexing strategy.
     *   Reference: Commits 65af53a, e10a1f7
 
-*   **✅ COMPLETED: AI-Generated Summaries:**
-    *   Implemented full LLM summarization pipeline using Ollama (Olmo-3-7B model).
-    *   Summaries are insight-focused, 256-token limit, stored in article metadata.
-    *   Increased timeout to 300s for slower local models.
-    *   Status: All articles generate summaries on discovery.
+*   **⚠️ Phase 2 - Enhanced Summarization (PARTIAL):**
+     *   ✅ Implemented full LLM summarization pipeline using Ollama (Olmo-3-7B model).
+     *   ✅ Summaries are insight-focused, 256-token limit, stored in article metadata.
+     *   ✅ Increased timeout to 300s for slower local models.
+     *   ❌ **Currently DISABLED** (`generate_summary: bool = False`) - causing pipeline slowdowns
+     *   **Tasks:**
+         - [ ] Identify and fix what's causing summarization bottlenecks (timeout? model performance?)
+         - [ ] Profile summarization performance on Olmo-3-7B
+         - [ ] Consider async queue for LLM generation (non-blocking)
+         - [ ] Add configurable summary length/prompt templates
+         - [ ] Re-enable with optimizations and test at scale across 30 blogs
+         - [ ] Reference: `monitor/main.py` lines 329-338, `monitor/llm/ollama.py`
 
-*   **Implement Spaced Repetition UI:**
-    *   Current state: Backend APIs exist for marking as read and retrieving review items.
-    *   Goal: Update the web dashboard (`monitor/web/templates/index.html`) to expose "Mark as Read" functionality and a "Review Queue" tab.
+*   **❌ Phase 3 - Spaced Repetition Review System (NOT STARTED):**
+     *   Current state: Infrastructure exists but not wired up
+     *   Tests exist: `tests/integration/test_knowledge_retention.py`
+     *   **Tasks:**
+         - [ ] Implement `mark_as_read` API endpoint (`/api/posts/{id}/mark-read`)
+         - [ ] Implement `get_due_reviews` query (returns posts where `next_review_at <= now`)
+         - [ ] Add metadata fields: `read_status`, `read_at`, `next_review_at`, `review_stage`
+         - [ ] Implement review scheduling: Stage 1 (30 days), Stage 2 (90 days), Stage 3 (archived)
+         - [ ] Update web dashboard with "Review Queue" tab
+         - [ ] Add "Mark as Read" button to article cards
+         - [ ] Add review card view (shows enhanced summary instead of full text)
+         - [ ] Add review completion endpoint (progress to next stage)
+         - [ ] Reference: `monitor/vectordb/pgvector.py` (add `get_due_reviews()` query)
 
 ## 🚀 Refactoring Goals
 
