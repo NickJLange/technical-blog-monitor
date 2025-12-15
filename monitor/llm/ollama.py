@@ -56,5 +56,12 @@ class OllamaGenerationClient(GenerationClient):
             return data.get("response", "")
             
         except Exception as e:
-            logger.error("Ollama generation failed", error=str(e), model=self.model)
+            logger.error(
+                "Ollama generation failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                model=self.model,
+                url=url,
+                status_code=getattr(e, 'status_code', None) if hasattr(e, 'status_code') else None
+            )
             raise

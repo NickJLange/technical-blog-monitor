@@ -8,6 +8,7 @@ Uses the shared connection pool from monitor.db.postgres_pool to enable
 unified PostgreSQL storage with the cache client.
 """
 import json
+import re
 from typing import List, Optional, Tuple
 
 import asyncpg
@@ -40,16 +41,26 @@ class PgVectorDBClient(BaseVectorDBClient):
         super().__init__(config)
         self.connection_string = config.connection_string
         self.pool: Optional[asyncpg.Pool] = None
+        
+        # Validate collection name to prevent SQL injection
+        if not re.match(r'^[a-zA-Z0-9_]+$', config.collection_name):
+            raise ValueError("Collection name must contain only alphanumeric characters and underscores")
+            
         self.table_name = f"blog_posts_{config.collection_name}"
         self.text_dimension = config.text_vector_dimension
         self.image_dimension = config.image_vector_dimension
 
+        masked_connection = self._mask_connection_string(self.connection_string)
         logger.info(
             "pgvector database client initialized",
-            connection=self.connection_string,
+            connection=masked_connection,
             table=self.table_name,
             text_dim=self.text_dimension,
         )
+
+    def _mask_connection_string(self, conn_str: str) -> str:
+        """Mask username and password in connection string for logging."""
+        return re.sub(r'(://[^:]*)(:.*)?@', r'\1:***@', conn_str)
 
     async def initialize(self) -> None:
         """Initialize the pgvector database connection and tables."""
@@ -85,18 +96,18 @@ class PgVectorDBClient(BaseVectorDBClient):
                     )
                 """)
 
-                # Create indexes for vector similarity search
+                # Create indexes for vector similarity search (using HNSW for high dimensions)
                 await conn.execute(f"""
                     CREATE INDEX IF NOT EXISTS {self.table_name}_text_embedding_idx
-                    ON {self.table_name} USING ivfflat (text_embedding vector_cosine_ops)
-                    WITH (lists = 100)
+                    ON {self.table_name} USING hnsw (text_embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 64)
                 """)
 
                 if self.image_dimension:
                     await conn.execute(f"""
                         CREATE INDEX IF NOT EXISTS {self.table_name}_image_embedding_idx
-                        ON {self.table_name} USING ivfflat (image_embedding vector_cosine_ops)
-                        WITH (lists = 100)
+                        ON {self.table_name} USING hnsw (image_embedding vector_cosine_ops)
+                        WITH (m = 16, ef_construction = 64)
                     """)
 
                 # Create index on publish_date for time-based queries
@@ -137,6 +148,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 # Prepare metadata as JSON
                 metadata = record.metadata or {}
                 metadata.update({
@@ -204,6 +216,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 # Prepare batch data
                 values = []
                 for record in records:
@@ -270,6 +283,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 row = await conn.fetchrow(f"""
                     SELECT id, url, title, source, author, publish_date,
                            text_embedding, image_embedding, metadata
@@ -316,6 +330,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                # No vector ops here, but good practice if we add them later or triggers
                 result = await conn.execute(f"""
                     DELETE FROM {self.table_name}
                     WHERE id = $1
@@ -350,6 +365,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 # Use cosine similarity (1 - cosine distance)
                 rows = await conn.fetch(f"""
                     SELECT id, url, title, source, author, publish_date,
@@ -406,6 +422,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 rows = await conn.fetch(f"""
                     SELECT id, url, title, source, author, publish_date,
                            text_embedding, image_embedding, metadata,
@@ -470,6 +487,7 @@ class PgVectorDBClient(BaseVectorDBClient):
 
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 # Hybrid search with weighted combination
                 rows = await conn.fetch(f"""
                     SELECT id, url, title, source, author, publish_date,
@@ -529,43 +547,6 @@ class PgVectorDBClient(BaseVectorDBClient):
             )
             return 0
 
-    async def get_due_reviews(self, limit: int = 10) -> List[EmbeddingRecord]:
-        """
-        Get records that are due for review.
-        
-        Returns:
-            List[EmbeddingRecord]: Records due for review
-        """
-        try:
-            async with self.pool.acquire() as conn:
-                rows = await conn.fetch(f"""
-                    SELECT id, url, title, source, author, publish_date,
-                           text_embedding, image_embedding, metadata
-                    FROM {self.table_name}
-                    WHERE (metadata->>'next_review_at')::timestamptz <= NOW()
-                    ORDER BY (metadata->>'next_review_at')::timestamptz ASC
-                    LIMIT $1
-                """, limit)
-
-                records = []
-                for row in rows:
-                    metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-                    text_emb = row["text_embedding"]
-                    image_emb = row["image_embedding"]
-                    records.append(EmbeddingRecord(
-                        id=row["id"],
-                        url=row["url"],
-                        title=row["title"],
-                        publish_date=row["publish_date"],
-                        text_embedding=text_emb.tolist() if text_emb is not None else None,
-                        image_embedding=image_emb.tolist() if image_emb is not None else None,
-                        metadata=metadata
-                    ))
-                return records
-        except Exception as e:
-            logger.error("Error fetching due reviews", error=str(e))
-            return []
-
     async def list_all(self, limit: int = 1000) -> List[EmbeddingRecord]:
         """
         List all records in the database.
@@ -578,6 +559,7 @@ class PgVectorDBClient(BaseVectorDBClient):
         """
         try:
             async with self.pool.acquire() as conn:
+                await register_vector(conn)
                 rows = await conn.fetch(f"""
                     SELECT id, url, title, source, author, publish_date,
                            text_embedding, image_embedding, metadata
@@ -612,6 +594,44 @@ class PgVectorDBClient(BaseVectorDBClient):
                 "Error listing all records from pgvector",
                 error=str(e),
             )
+            return []
+
+    async def get_due_reviews(self, limit: int = 10) -> List[EmbeddingRecord]:
+        """
+        Get records that are due for review.
+        
+        Returns:
+            List[EmbeddingRecord]: Records due for review
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await register_vector(conn)
+                rows = await conn.fetch(f"""
+                    SELECT id, url, title, source, author, publish_date,
+                           text_embedding, image_embedding, metadata
+                    FROM {self.table_name}
+                    WHERE (metadata->>'next_review_at')::timestamptz <= NOW()
+                    ORDER BY (metadata->>'next_review_at')::timestamptz ASC
+                    LIMIT $1
+                """, limit)
+
+                records = []
+                for row in rows:
+                    metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                    text_emb = row["text_embedding"]
+                    image_emb = row["image_embedding"]
+                    records.append(EmbeddingRecord(
+                        id=row["id"],
+                        url=row["url"],
+                        title=row["title"],
+                        publish_date=row["publish_date"],
+                        text_embedding=text_emb.tolist() if text_emb is not None else None,
+                        image_embedding=image_emb.tolist() if image_emb is not None else None,
+                        metadata=metadata
+                    ))
+                return records
+        except Exception as e:
+            logger.error("Error fetching due reviews", error=str(e))
             return []
 
     async def clear(self) -> bool:
