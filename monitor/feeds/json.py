@@ -16,8 +16,9 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
+
+from monitor.parser import parse_html
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -87,11 +88,11 @@ class JSONFeedProcessor(FeedProcessor):
         except json.JSONDecodeError:
             # Not valid JSON, try to find JSON feed URL in HTML
             try:
-                soup = BeautifulSoup(content, 'html.parser')
-                json_link = soup.find('link', rel='alternate', type='application/json')
+                parser = parse_html(content)
+                json_link = parser.find('link', rel='alternate', type='application/json')
                 
                 if json_link and json_link.get('href'):
-                    json_url = json_link['href']
+                    json_url = json_link.get('href')
                     # Handle relative URLs
                     if not json_url.startswith(('http://', 'https://')):
                         base_url = str(self.url)
@@ -363,8 +364,8 @@ class JSONFeedProcessor(FeedProcessor):
                 # Clean HTML in summary
                 if summary and '<' in summary:
                     try:
-                        soup = BeautifulSoup(summary, 'html.parser')
-                        summary = soup.get_text(separator=' ', strip=True)
+                        parser = parse_html(summary)
+                        summary = parser.get_text()
                     except Exception:
                         # If parsing fails, use a simple regex to strip tags
                         summary = re.sub(r'<[^>]+>', '', summary)

@@ -10,11 +10,11 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 
 from monitor.config import FeedConfig
 from monitor.feeds.rss import RSSFeedProcessor
 from monitor.models.blog_post import BlogPost
+from monitor.parser import parse_html
 
 logger = structlog.get_logger()
 

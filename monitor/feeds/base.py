@@ -20,7 +20,6 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import structlog
 import bleach
-from bs4 import BeautifulSoup
 from pydantic import HttpUrl
 from tenacity import (
     retry,

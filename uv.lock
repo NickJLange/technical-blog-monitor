@@ -115,19 +115,6 @@ wheels = [
 ]
 
 [[package]]
-name = "beautifulsoup4"
-version = "4.14.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "soupsieve" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/77/e9/df2358efd7659577435e2177bfa69cba6c33216681af51a707193dec162a/beautifulsoup4-4.14.2.tar.gz", hash = "sha256:2a98ab9f944a11acee9cc848508ec28d9228abfd522ef0fad6a02a72e0ded69e", size = 625822, upload-time = "2025-09-29T10:05:42.613Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/fe/3aed5d0be4d404d12d36ab97e2f1791424d9ca39c2f754a6285d59a3b01d/beautifulsoup4-4.14.2-py3-none-any.whl", hash = "sha256:5ef6fa3a8cbece8488d66985560f97ed091e22bbc4e9c2338508a9d5de6d4515", size = 106392, upload-time = "2025-09-29T10:05:43.771Z" },
-]
-
-[[package]]
 name = "black"
 version = "25.11.0"
 source = { registry = "https://pypi.org/simple" }
@@ -810,6 +797,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e8/5d/447af5ea094b9e4c4054f82e223ada074c552335b9b4b2d14bd9b35a67c4/joblib-1.5.2.tar.gz", hash = "sha256:3faa5c39054b2f03ca547da9b2f52fde67c06240c31853f306aea97f13647b55", size = 331077, upload-time = "2025-08-27T12:15:46.575Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/e8/685f47e0d754320684db4425a0967f7d3fa70126bffd76110b7009a0090f/joblib-1.5.2-py3-none-any.whl", hash = "sha256:4e1f0bdbb987e6d843c70cf43714cb276623def372df3c22fe5266b2670bc241", size = 308396, upload-time = "2025-08-27T12:15:45.188Z" },
+]
+
+[[package]]
+name = "justhtml"
+version = "0.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/c5/2fd22a7ac78bcf4a3eb235b794ca75667a0235f03cc2a7224d52d2c045a9/justhtml-0.10.0.tar.gz", hash = "sha256:87a57528b708d2ab3e93f6f5082bcca6cc9cb506a830214e7ace8f105d8b102b", size = 158191, upload-time = "2025-12-14T08:46:08.724Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/57/3e/59fc585669fcaf1176015d61cdb1e72751b5b9898cc7e9364b363f066d9d/justhtml-0.10.0-py3-none-any.whl", hash = "sha256:a3bb61a1f1a29b4626662d16974d04137b56d9401c95a381d87b101fa33a3e41", size = 72766, upload-time = "2025-12-14T08:46:07.267Z" },
 ]
 
 [[package]]
@@ -2168,15 +2164,6 @@ wheels = [
 ]
 
 [[package]]
-name = "soupsieve"
-version = "2.8"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6d/e6/21ccce3262dd4889aa3332e5a119a3491a95e8f60939870a3a035aabac0d/soupsieve-2.8.tar.gz", hash = "sha256:e2dd4a40a628cb5f28f6d4b0db8800b8f581b65bb380b97de22ba5ca8d72572f", size = 103472, upload-time = "2025-08-27T15:39:51.78Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/a0/bb38d3b76b8cae341dad93a2dd83ab7462e6dbcdd84d43f54ee60a8dc167/soupsieve-2.8-py3-none-any.whl", hash = "sha256:0cc76456a30e20f5d7f2e14a98a4ae2ee4e5abdc7c5ea0aafe795f344bc7984c", size = 36679, upload-time = "2025-08-27T15:39:50.179Z" },
-]
-
-[[package]]
 name = "starlette"
 version = "0.50.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2228,7 +2215,6 @@ dependencies = [
     { name = "anyio" },
     { name = "apscheduler" },
     { name = "asyncpg" },
-    { name = "beautifulsoup4" },
     { name = "bleach" },
     { name = "brotli" },
     { name = "certifi" },
@@ -2236,6 +2222,7 @@ dependencies = [
     { name = "feedparser" },
     { name = "httpx" },
     { name = "jinja2" },
+    { name = "justhtml" },
     { name = "numpy" },
     { name = "openai" },
     { name = "pgvector" },
@@ -2278,7 +2265,6 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.6.0" },
     { name = "apscheduler", specifier = ">=3.10.4" },
     { name = "asyncpg", specifier = ">=0.29.0" },
-    { name = "beautifulsoup4", specifier = ">=4.12.3" },
     { name = "bleach", specifier = ">=6.1.0" },
     { name = "brotli", specifier = ">=1.2.0" },
     { name = "certifi", specifier = ">=2024.8.30" },
@@ -2286,6 +2272,7 @@ requires-dist = [
     { name = "feedparser", specifier = ">=6.0.11" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.4" },
+    { name = "justhtml", specifier = ">=0.10.0" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "openai", specifier = ">=1.54.0" },
     { name = "pgvector", specifier = ">=0.4.0" },

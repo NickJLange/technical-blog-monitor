@@ -15,8 +15,9 @@ from urllib.parse import urljoin, urlparse
 import feedparser
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
+
+from monitor.parser import parse_html
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -141,11 +142,11 @@ class RSSFeedProcessor(FeedProcessor):
         if not content.strip().startswith(b'<?xml') and not content.strip().startswith(b'<rss'):
             # Try to find RSS feed URL in HTML
             try:
-                soup = BeautifulSoup(content, 'html.parser')
-                rss_link = soup.find('link', rel='alternate', type='application/rss+xml')
+                parser = parse_html(content)
+                rss_link = parser.find('link', rel='alternate', type='application/rss+xml')
                 
                 if rss_link and rss_link.get('href'):
-                    rss_url = rss_link['href']
+                    rss_url = rss_link.get('href')
                     # Handle relative URLs
                     if not rss_url.startswith(('http://', 'https://')):
                         base_url = str(self.url)
@@ -201,7 +202,7 @@ class RSSFeedProcessor(FeedProcessor):
                 "Feed URL returned HTML instead of RSS/XML",
                 url=self.url,
             )
-            # Try to extract articles from HTML using BeautifulSoup
+            # Try to extract articles from HTML using justhtml parser
             return await self._parse_html_as_feed(content)
         
         # Parse the feed using feedparser
@@ -263,15 +264,15 @@ class RSSFeedProcessor(FeedProcessor):
             loop = asyncio.get_running_loop()
             base_url = str(self.url)
             
-            def parse_html():
-                soup = BeautifulSoup(content, 'html.parser')
+            def extract_entries_from_html():
+                parser = parse_html(content)
                 entries = []
                 
                 # Look for article elements and links within them
                 # Priority order: article > h1/h2 links > post containers > generic links
                 
                 # Strategy 1: Look for <article> elements (but only if they look like blog articles)
-                article_elements = soup.find_all('article')
+                article_elements = parser.find_all('article')
                 if article_elements:
                     for article in article_elements:
                         # Find the main article link by selecting the longest text link
@@ -301,7 +302,7 @@ class RSSFeedProcessor(FeedProcessor):
                                         break
                         
                         if link:
-                            href = link.get('href', '')
+                            href = link.get('href')
                             title = link.get_text(strip=True)
                             
                             if href and title and len(title) > 5:
@@ -325,9 +326,11 @@ class RSSFeedProcessor(FeedProcessor):
                                 
                                 # Try to extract author from article or nearby elements
                                 author = None
-                                author_elem = article.find(class_=lambda x: x and 'author' in x.lower())
+                                author_elem = article.find('span', itemprop='author')
                                 if not author_elem:
-                                    author_elem = article.find('span', {'itemprop': 'author'})
+                                    # Try class-based selector
+                                    author_elems = article.find_all(class_='author')
+                                    author_elem = author_elems[0] if author_elems else None
                                 if author_elem:
                                     author = author_elem.get_text(strip=True)
                                 
@@ -349,13 +352,18 @@ class RSSFeedProcessor(FeedProcessor):
                 
                 # Strategy 2: Look for heading links (h1, h2, h3) in post containers
                 if not entries:
-                    for container in soup.find_all(['div', 'section'], class_=lambda x: x and any(
-                        keyword in (x or '').lower() for keyword in ['post', 'article', 'item', 'entry']
-                    )):
-                        for heading in container.find_all(['h1', 'h2', 'h3']):
+                    containers = parser.find_all(['div', 'section'])
+                    for container in containers:
+                        # Check if container has post/article/item/entry in class
+                        container_class = container.get('class', '')
+                        if not any(keyword in (container_class or '').lower() for keyword in ['post', 'article', 'item', 'entry']):
+                            continue
+                        
+                        headings = container.find_all(['h1', 'h2', 'h3'])
+                        for heading in headings:
                             link = heading.find('a', href=True)
                             if link:
-                                href = link.get('href', '')
+                                href = link.get('href')
                                 title = link.get_text(strip=True)
                                 
                                 if href and title and len(title) > 5:
@@ -369,9 +377,10 @@ class RSSFeedProcessor(FeedProcessor):
                                     
                                     # Try to extract author from container
                                     author = None
-                                    author_elem = container.find(class_=lambda x: x and 'author' in x.lower())
+                                    author_elem = container.find('span', itemprop='author')
                                     if not author_elem:
-                                        author_elem = container.find('span', {'itemprop': 'author'})
+                                        author_elems = container.find_all(class_='author')
+                                        author_elem = author_elems[0] if author_elems else None
                                     if author_elem:
                                         author = author_elem.get_text(strip=True)
                                     
@@ -384,8 +393,8 @@ class RSSFeedProcessor(FeedProcessor):
                 
                 # Strategy 3: Look for links that look like article URLs
                 if not entries:
-                    for link in soup.find_all('a', href=True):
-                        href = link.get('href', '')
+                    for link in parser.find_all('a', href=True):
+                        href = link.get('href')
                         
                         # Skip non-article links
                         if not href or href.startswith('#') or href.startswith('javascript'):
@@ -427,22 +436,32 @@ class RSSFeedProcessor(FeedProcessor):
                             continue
                         
                         # Try to get publication date from nearby time elements
-                        time_elem = link.find_next('time')
+                        # Note: justhtml doesn't have find_next, so we'll look in parent container
+                        time_elem = None
+                        parent = link.parent
+                        while parent:
+                            time_elem = parent.find('time')
+                            if time_elem:
+                                break
+                            parent = parent.parent
+                        
                         published = None
                         if time_elem:
                             published = time_elem.get_text(strip=True)
                         
                         # Try to extract author from nearby elements
                         author = None
-                        author_elem = link.find_next(class_=lambda x: x and 'author' in x.lower())
-                        if not author_elem:
-                            # Try to find in parent container
-                            parent = link.parent
-                            while parent and parent.name != 'body':
-                                author_elem = parent.find(class_=lambda x: x and 'author' in x.lower())
-                                if author_elem:
-                                    break
-                                parent = parent.parent
+                        author_elem = None
+                        parent = link.parent
+                        while parent:
+                            author_elem = parent.find('span', itemprop='author')
+                            if author_elem:
+                                break
+                            author_elems = parent.find_all(class_='author')
+                            if author_elems:
+                                author_elem = author_elems[0]
+                                break
+                            parent = parent.parent
                         if author_elem:
                             author = author_elem.get_text(strip=True)
                         
@@ -464,7 +483,7 @@ class RSSFeedProcessor(FeedProcessor):
                 
                 return unique_entries[:20]  # Return top 20 entries
             
-            entries = await loop.run_in_executor(None, parse_html)
+            entries = await loop.run_in_executor(None, extract_entries_from_html)
             logger.info(
                 "Extracted entries from HTML feed",
                 url=self.url,
@@ -522,11 +541,12 @@ class RSSFeedProcessor(FeedProcessor):
                         if 'value' in content_item:
                             # Try to extract tags from HTML content
                             try:
-                                soup = BeautifulSoup(content_item['value'], 'html.parser')
-                                meta_tags = soup.find_all('meta', property='article:tag')
+                                parser = parse_html(content_item['value'])
+                                meta_tags = parser.find_all('meta', property='article:tag')
                                 for tag in meta_tags:
-                                    if 'content' in tag.attrs:
-                                        tags.append(tag['content'].strip())
+                                    content_attr = tag.get('content')
+                                    if content_attr:
+                                        tags.append(content_attr.strip())
                             except Exception:
                                 pass
                 
@@ -616,11 +636,11 @@ class RSSFeedProcessor(FeedProcessor):
             return ""
         
         try:
-            # Parse HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
+            # Parse HTML using justhtml
+            parser = parse_html(html_content)
             
             # Extract text
-            text = soup.get_text(separator=' ', strip=True)
+            text = parser.get_text()
             
             # Normalize whitespace
             text = re.sub(r'\s+', ' ', text).strip()

@@ -11,11 +11,11 @@ from urllib.parse import urljoin
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 
 from monitor.config import FeedConfig
 from monitor.feeds.base import FeedProcessor, parse_feed_entries
 from monitor.models.blog_post import BlogPost
+from monitor.parser import parse_html
 
 logger = structlog.get_logger()
 
@@ -123,14 +123,14 @@ class SpotifyFeedProcessor(FeedProcessor):
         try:
             loop = asyncio.get_running_loop()
             
-            def parse_html():
-                soup = BeautifulSoup(content, 'html.parser')
+            def parse_spotify_content():
+                parser = parse_html(content)
                 entries = []
                 
                 # Spotify uses article links with format: /YYYY/MM/article-slug
                 # Look for article links on the page
-                for link in soup.find_all('a', href=True):
-                    href = link.get('href', '')
+                for link in parser.find_all('a', href=True):
+                    href = link.get('href')
                     
                     # Skip non-article links
                     if not href or href.startswith('#'):
@@ -177,7 +177,7 @@ class SpotifyFeedProcessor(FeedProcessor):
                 
                 return unique_entries[:50]  # Return up to 50 entries
             
-            entries = await loop.run_in_executor(None, parse_html)
+            entries = await loop.run_in_executor(None, parse_spotify_content)
             logger.info(
                 "Parsed Spotify blog entries",
                 url=self.url,

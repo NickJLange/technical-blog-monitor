@@ -11,11 +11,11 @@ from urllib.parse import urljoin
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 
 from monitor.config import FeedConfig
 from monitor.feeds.base import FeedProcessor, parse_feed_entries
 from monitor.models.blog_post import BlogPost
+from monitor.parser import parse_html
 
 logger = structlog.get_logger()
 
@@ -101,14 +101,14 @@ class MediumFeedProcessor(FeedProcessor):
         try:
             loop = asyncio.get_running_loop()
             
-            def parse_html():
-                soup = BeautifulSoup(content, 'html.parser')
+            def parse_medium_content():
+                parser = parse_html(content)
                 entries = []
                 
                 # Medium uses article links with specific patterns
                 # Look for article links in the feed
-                for link in soup.find_all('a', href=True):
-                    href = link.get('href', '')
+                for link in parser.find_all('a', href=True):
+                    href = link.get('href')
                     
                     # Skip non-article links
                     if not href or href.startswith('#') or 'medium.com' not in href.lower():
@@ -146,7 +146,7 @@ class MediumFeedProcessor(FeedProcessor):
                 
                 return unique_entries[:20]
             
-            entries = await loop.run_in_executor(None, parse_html)
+            entries = await loop.run_in_executor(None, parse_medium_content)
             logger.info(
                 "Parsed Medium blog entries",
                 url=self.url,

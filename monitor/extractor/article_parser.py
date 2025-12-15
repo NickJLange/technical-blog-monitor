@@ -4,7 +4,8 @@ Article parser module for the technical blog monitor.
 This module provides functionality for extracting clean, readable content
 from web pages, including the main article text, metadata, and structure.
 It uses readability-lxml for main content extraction and BeautifulSoup for
-additional parsing and cleaning.
+content cleaning (element removal, comment stripping) where justhtml's 
+read-only API is insufficient.
 """
 import asyncio
 import re
@@ -19,6 +20,8 @@ import structlog
 from bs4 import BeautifulSoup, Comment, NavigableString
 from dateutil import parser as date_parser
 from readability import Document
+
+from monitor.parser import parse_html
 
 from monitor.models.article import ArticleContent
 from monitor.models.content_type import ContentType
