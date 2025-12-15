@@ -155,9 +155,32 @@ def create_app(settings=None) -> FastAPI:
             # ... (mock data logic remains same)
             pass
 
+        # Convert posts to summary format with explicit summary field
+        posts_data = []
+        for p in posts:
+            # Extract source and word count from metadata
+            source = p.source or (p.metadata.get("source") if p.metadata and isinstance(p.metadata, dict) else None) or "Unknown"
+            word_count = None
+            if p.metadata and isinstance(p.metadata, dict):
+                word_count = p.metadata.get("word_count")
+            
+            # Create PostSummary object
+            post_summary = PostSummary(
+                id=p.id,
+                title=p.title,
+                url=str(p.url),
+                source=source,
+                author=p.author,
+                publish_date=p.publish_date,
+                summary=p.get_summary(),
+                tags=[],
+                word_count=word_count
+            )
+            posts_data.append(post_summary.model_dump(by_alias=False, mode='json'))
+        
         return {
-            "posts": [p.to_dict() for p in posts],
-            "total": len(posts) # Approx
+            "posts": posts_data,
+            "total": len(posts_data)
         }
 
     @app.post("/api/posts/{post_id}/read")

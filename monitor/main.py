@@ -346,6 +346,7 @@ async def process_post(app_context: AppContext, post, semaphore: asyncio.Semapho
                 image_embedding = await app_context.embedding_client.embed_image(screenshot_path)
             
             # Create embedding record
+            final_summary = ai_summary or content.summary
             record = EmbeddingRecord(
                 id=post.id,
                 url=post.url,
@@ -353,10 +354,14 @@ async def process_post(app_context: AppContext, post, semaphore: asyncio.Semapho
                 publish_date=post.publish_date,
                 text_embedding=text_embedding,
                 image_embedding=image_embedding,
+                summary=final_summary,  # Store in top-level field
+                author=content.author,  # Store in top-level field
+                source=post.source,  # Store in top-level field
+                content_snippet=content.summary,
                 metadata={
                     "source": post.source,
                     "author": content.author,
-                    "summary": ai_summary or content.summary,
+                    "summary": final_summary,
                     "screenshot_path": str(screenshot_path) if screenshot_path else None,
                     "word_count": content.word_count,
                     "tags": content.tags,
