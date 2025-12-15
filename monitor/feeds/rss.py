@@ -243,7 +243,32 @@ class RSSFeedProcessor(FeedProcessor):
                 
                 # Strategy 1: Look for <article> elements
                 for article in soup.find_all('article'):
-                    link = article.find('a', href=True)
+                    # Find the main article link by selecting the longest text link
+                    # (article titles are usually longer than breadcrumbs/author names)
+                    link = None
+                    
+                    links_in_article = article.find_all('a', href=True)
+                    if links_in_article:
+                        # Sort by text length descending, prefer longer titles (article titles are longer)
+                        sorted_links = sorted(
+                            links_in_article,
+                            key=lambda l: len(l.get_text(strip=True)),
+                            reverse=True
+                        )
+                        # Find first link with substantial text (skip breadcrumbs, author names, etc.)
+                        for candidate in sorted_links:
+                            text_len = len(candidate.get_text(strip=True))
+                            if text_len > 10:  # Article titles are typically > 10 chars
+                                link = candidate
+                                break
+                        
+                        # Fallback: if no link with > 10 chars, use first link with > 5 chars
+                        if not link:
+                            for candidate in sorted_links:
+                                if len(candidate.get_text(strip=True)) > 5:
+                                    link = candidate
+                                    break
+                    
                     if link:
                         href = link.get('href', '')
                         title = link.get_text(strip=True)
