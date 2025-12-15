@@ -1,49 +1,129 @@
-# TODO.md - Opinionated Refactors for Future Work
+# Feed Failure Fix Tasks
 
-This document outlines a list of opinionated refactoring goals to further improve the codebase's maintainability, performance, and reliability. These items are noted for future consideration and are aligned with established software engineering best practices.
+## 403 Forbidden - Sites Blocking Bot Access (6 feeds)
+Requires User-Agent spoofing, JavaScript rendering, or login handling
 
-## 🌟 Web View & Content Enhancements
+- [ ] Airbnb Engineering (medium.com/airbnb-engineering)
+  - Status: 403 Forbidden
+  - Solution: Medium blocks bots; need browser rendering or API alternative
+  
+- [ ] OpenAI Blog (openai.com/blog/)
+  - Status: 403 Forbidden
+  - Solution: Possibly bot detection; try User-Agent variation
+  
+- [ ] DoorDash Engineering (careersatdoordash.com/career-areas/engineering/)
+  - Status: 403 Forbidden
+  - Solution: May require JavaScript execution
+  
+- [ ] Docker Blog (docker.com/blog/)
+  - Status: 403 Forbidden
+  - Solution: Bot detection or rate limiting
+  
+- [ ] Lyft Engineering (eng.lyft.com)
+  - Status: 403 Forbidden (redirects to medium.com identity)
+  - Solution: Medium platform; need special handling
+  
+- [ ] Twitter Engineering (blog.twitter.com/engineering/)
+  - Status: 403 Forbidden
+  - Solution: May need API authentication
 
-*   **Improve Article Summaries:**
-    *   Current state: Summaries are aggressively truncated to 200 characters in the web view.
-    *   Goal: Increase limit, implement "Read More" expansion, and improve fallback logic when metadata description is missing.
-*   **Display Article Images:**
-    *   Current state: Images are extracted but not displayed in the web view.
-    *   Goal: Render the main "hero" image for each article in the dashboard card.
-*   **Local Image Caching:**
-    *   Current state: Images are hotlinked (original URLs preserved).
-    *   Goal: Implement an option to download and cache images locally to prevent link rot and improve privacy.
-*   **Better Image Extraction:**
-    *   Current state: `extract_article_content` gets all images but doesn't smartly pick a hero image.
-    *   Goal: Wire up `image_extractor.get_main_image` to the main pipeline.
+---
 
-## 🧠 Knowledge Retention & Enhanced Summarization
+## Malformed/Invalid XML RSS Feeds (9 feeds)
+Feeds return HTML or invalid XML instead of proper RSS/Atom
 
-*   **✅ COMPLETED: Address `pgvector` Embedding Dimension Limit via MRL:**
-    *   Previous state: `pgvector` indices have hard limit of 2000 dimensions. Qwen3-8B outputs 4096 dimensions.
-    *   Solution: Implemented Matryoshka Representation Learning (MRL) truncation. Qwen3-8B embeddings now truncated to 1920 dimensions via `EMBEDDING__EMBEDDING_DIMENSIONS` config.
-    *   Status: Working in production with HNSW indexing strategy.
-    *   Reference: Commits 65af53a, e10a1f7
+- [ ] Google Cloud Blog (cloud.google.com/blog/)
+  - Error: "<unknown>:2:0: syntax error"
+  - Solution: Auto-detect HTML; switch to scraping or find proper feed URL
+  
+- [ ] Anthropic (anthropic.com/news)
+  - Error: "<unknown>:2:49039: not well-formed (invalid token)"
+  - Solution: Non-standard feed format; may need custom parser
+  
+- [ ] Apache Kafka (kafka.apache.org/blog)
+  - Error: "<unknown>:37:16: not well-formed (invalid token)"
+  - Solution: Malformed XML; try cleanup or web scraping
+  
+- [ ] GitLab Blog (about.gitlab.com/blog/)
+  - Error: "<unknown>:2:382: not well-formed (invalid token)"
+  - Solution: May need to find RSS endpoint; currently returns HTML
+  
+- [ ] Slack Engineering (slack.engineering/)
+  - Error: "<unknown>:2:0: syntax error"
+  - Solution: Returns HTML; implement HTML parsing fallback
+  
+- [ ] Stripe Engineering (stripe.com/blog/engineering)
+  - Error: "<unknown>:10:0: not well-formed (invalid token)"
+  - Solution: Invalid XML; find proper RSS feed or use scraper
+  
+- [ ] Redis Blog (redis.com/blog/)
+  - Error: "<unknown>:2:6725: not well-formed (invalid token)"
+  - Solution: Feed has encoding/XML issues
+  
+- [ ] Meta AI (ai.meta.com/blog/)
+  - Error: "<unknown>:4:1420: not well-formed (invalid token)"
+  - Solution: Malformed RSS response
+  
+- [ ] Spotify Engineering (engineering.atspotify.com/)
+  - Error: "<unknown>:2:34872: not well-formed (invalid token)"
+  - Solution: Invalid RSS structure
+  
+- [ ] LinkedIn Engineering (linkedin.com/blog/engineering)
+  - Error: "<unknown>:60:15: mismatched tag"
+  - Solution: Malformed feed response
 
-*   **✅ COMPLETED: AI-Generated Summaries:**
-    *   Implemented full LLM summarization pipeline using Ollama (Olmo-3-7B model).
-    *   Summaries are insight-focused, 256-token limit, stored in article metadata.
-    *   Increased timeout to 300s for slower local models.
-    *   Status: All articles generate summaries on discovery.
+---
 
-*   **Implement Spaced Repetition UI:**
-    *   Current state: Backend APIs exist for marking as read and retrieving review items.
-    *   Goal: Update the web dashboard (`monitor/web/templates/index.html`) to expose "Mark as Read" functionality and a "Review Queue" tab.
+## Rate Limiting / HTTP 429 (1 feed)
+Site is rate-limiting requests
 
-## 🚀 Refactoring Goals
+- [ ] HashiCorp Blog (hashicorp.com/blog)
+  - Status: 429 Too Many Requests
+  - Solution: Add request throttling, backoff strategy, or cache longer
 
-*   **Standardize Error Handling:** Implement a consistent, application-wide error handling strategy (e.g., custom exception classes, centralized error logging, user-friendly error messages).
-*   **Optimize Database Queries:** Review and optimize frequently executed database queries for performance, including proper indexing, eager loading, and avoiding N+1 problems.
-*   **Implement Caching Layer:** Further enhance or refine the caching strategy to reduce database load and improve response times, potentially introducing more granular control or additional cache types where beneficial.
-*   **Refactor Auth Module:** If applicable, refactor any authentication/authorization logic for clarity, security, and scalability, potentially integrating with standard libraries or frameworks.
-*   **Add Input Validation:** Implement robust input validation at all service boundaries (e.g., API endpoints, external data ingests) to prevent invalid data and security vulnerabilities.
-*   **Improve Logging:** Enhance existing logging with more context, structured data, and appropriate log levels to facilitate debugging, monitoring, and auditing.
-*   **Enhance Test Coverage:** Increase unit, integration, and end-to-end test coverage to ensure code quality, prevent regressions, and validate system behavior.
-*   **Update Dependencies:** Regularly review and update project dependencies to leverage new features, security fixes, and performance improvements.
-*   **Document API Endpoints:** Provide comprehensive documentation for all API endpoints, including request/response schemas, authentication requirements, and error codes.
-*   **Centralize Configuration:** Refine and centralize application configuration management to reduce redundancy and simplify deployment across different environments.
+---
+
+## SSL/Certificate Errors (1 feed)
+SSL verification failures
+
+- [ ] Netflix Tech Blog (netflixtechblog.com)
+  - Error: "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+  - Solution: Verify SSL cert chain; may need custom CA bundle or disable verification
+
+---
+
+## HTTP 406 Not Acceptable (1 feed)
+Server rejecting request format
+
+- [ ] Uber Engineering (uber.com/en-US/blog/engineering/)
+  - Status: 406 Not Acceptable
+  - Solution: May need to adjust Accept headers or User-Agent
+
+---
+
+## Implementation Strategy
+
+### Phase 1: Quick Wins
+1. **User-Agent Spoofing**: Apply to all feeds (may fix some 403s)
+2. **SSL Fix**: Netflix - update certificates
+3. **Rate Limiting**: HashiCorp - implement exponential backoff
+
+### Phase 2: Feed Detection & Fallback
+4. **RSS Feed Discovery**: Auto-detect actual RSS endpoints (common for Slack, GitLab, etc.)
+5. **HTML Fallback Parser**: For sites returning HTML instead of RSS
+
+### Phase 3: Browser Rendering (If Needed)
+6. **JavaScript Rendering**: For sites requiring execution (Airbnb, some Medium blogs)
+7. **Cookie/Auth Handling**: For protected content (Twitter, LinkedIn)
+
+### Phase 4: Custom Integrations
+8. **API Alternatives**: Use official APIs where available (GitHub, etc.)
+9. **Web Scraping**: Last resort for sites without proper feeds
+
+---
+
+## Notes
+- Current success rate: 11/30 feeds (37%)
+- Total posts ingested: 44
+- Focus on malformed XML feeds first (9) - likely quick wins with better feed detection
+- 403 Forbidden errors may require browser-based approaches or alternative sources
