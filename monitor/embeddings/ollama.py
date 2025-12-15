@@ -60,6 +60,7 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.keep_alive = keep_alive
+        self.target_dimension = config.embedding_dimensions # Use configured dimension for truncation
         self._client = httpx.AsyncClient(
             timeout=timeout_seconds,
             limits=httpx.Limits(max_connections=max_connections),
@@ -71,6 +72,7 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             base_url=self.base_url,
             model=self.model,
             batch_size=self.batch_size,
+            target_dimension=self.target_dimension,
         )
     
     async def close(self) -> None:
@@ -148,6 +150,14 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
             if not isinstance(embedding, list) or not embedding:
                 raise RuntimeError(f"Invalid embedding response from Ollama: {data}")
             
+            if self.target_dimension and len(embedding) > self.target_dimension:
+                logger.debug(
+                    "Truncating embedding",
+                    original_dimension=len(embedding),
+                    target_dimension=self.target_dimension,
+                )
+                return embedding[:self.target_dimension]
+            
             return embedding
             
         except httpx.HTTPError as e:
@@ -199,6 +209,9 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
         Returns:
             int: Embedding dimension
         """
+        if self.target_dimension:
+            return self.target_dimension
+        
         if self._dim is None:
             probe = await self._embed_one("dimension probe")
             self._dim = len(probe)

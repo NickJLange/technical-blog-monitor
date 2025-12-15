@@ -52,6 +52,7 @@ class AppContext:
         self.generation_client = None  # Will be initialized later
         self.vector_db_client = None  # Will be initialized later
         self.shutdown_event = asyncio.Event()
+        self.active_tasks: Set[asyncio.Task] = set()
     
     async def initialize(self) -> None:
         """Initialize all components and resources."""
@@ -538,6 +539,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     """Main entry point for the application."""
+    # Ensure BROWSER environment variable does not interfere with Pydantic-settings
+    os.environ.pop("BROWSER", None)
     try:
         # Parse command line arguments
         args = parse_args()

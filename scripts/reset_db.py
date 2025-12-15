@@ -6,6 +6,7 @@ import asyncio
 import sys
 from pathlib import Path
 import asyncpg
+import os
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -49,4 +50,5 @@ async def reset_db():
         sys.exit(1)
 
 if __name__ == "__main__":
+    os.environ.pop("BROWSER", None) # Ensure BROWSER env var doesn't interfere
     asyncio.run(reset_db())
