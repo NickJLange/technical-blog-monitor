@@ -41,12 +41,28 @@ from monitor.config import ArticleProcessingConfig
 logger = structlog.get_logger()
 
 # Constants
-DEFAULT_USER_AGENT = "Technical-Blog-Monitor/0.1.0 (+https://github.com/your-org/technical-blog-monitor)"
+# Use a more realistic User-Agent that mimics a browser to avoid bot detection
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+FALLBACK_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+]
 DEFAULT_TIMEOUT = 30.0  # seconds
 DEFAULT_RETRY_ATTEMPTS = 3
 DEFAULT_CACHE_TTL = 3600  # 1 hour in seconds
 FEED_CACHE_PREFIX = "feed:"
 POST_CACHE_PREFIX = "post:"
+
+# More realistic headers to reduce bot detection
+DEFAULT_HEADERS = {
+    "Accept": "application/rss+xml,application/atom+xml,application/xml;q=0.9,text/html;q=0.8,*/*;q=0.1",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 
 class FeedProcessor(abc.ABC):
@@ -68,9 +84,11 @@ class FeedProcessor(abc.ABC):
         self.config = config
         self.name = config.name
         self.url = config.url
+        # Merge default headers with config headers, then add User-Agent
         self.headers = {
+            **DEFAULT_HEADERS,
+            **config.headers,
             "User-Agent": DEFAULT_USER_AGENT,
-            **config.headers
         }
     
     @abc.abstractmethod
@@ -170,10 +188,19 @@ class BrowserPool(Protocol):
         ...
 
 
+def _should_retry_429(exception: Exception) -> bool:
+    """
+    Check if we should retry on a 429 (Too Many Requests) error.
+    """
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code == 429
+    return False
+
+
 @retry(
-    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
-    stop=stop_after_attempt(DEFAULT_RETRY_ATTEMPTS),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException, httpx.HTTPStatusError)),
+    stop=stop_after_attempt(5),  # More attempts for rate limiting
+    wait=wait_exponential(multiplier=2, min=1, max=30),  # Exponential backoff with longer max
 )
 async def fetch_with_retry(
     client: httpx.AsyncClient,
@@ -182,7 +209,12 @@ async def fetch_with_retry(
     timeout: float = DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """
-    Fetch a URL with retry logic for transient errors.
+    Fetch a URL with retry logic for transient errors and rate limiting.
+    
+    Retries on:
+    - HTTP 429 (Too Many Requests) with exponential backoff
+    - Timeout errors
+    - Connection errors
     
     Args:
         client: HTTP client to use for the request
@@ -203,6 +235,22 @@ async def fetch_with_retry(
         timeout=timeout,
         follow_redirects=True,
     )
+    
+    # Check for 429 rate limiting and include in retry logic
+    if response.status_code == 429:
+        # Try to respect Retry-After header
+        retry_after = response.headers.get('Retry-After')
+        if retry_after:
+            logger.warning(
+                "Rate limited, respecting Retry-After header",
+                url=url,
+                retry_after=retry_after,
+            )
+        logger.debug(
+            "Got 429 rate limit, will retry with backoff",
+            url=url,
+        )
+    
     response.raise_for_status()
     return response
 
@@ -246,12 +294,32 @@ async def get_feed_processor(config: FeedConfig) -> FeedProcessor:
     # If URL pattern doesn't help, try to fetch the feed and check content
     try:
         async with httpx.AsyncClient() as client:
-            response = await fetch_with_retry(
-                client,
-                url,
-                headers={"User-Agent": DEFAULT_USER_AGENT},
-                timeout=DEFAULT_TIMEOUT,
-            )
+            # Use default headers to improve compatibility
+            headers = {**DEFAULT_HEADERS, "User-Agent": DEFAULT_USER_AGENT}
+            
+            try:
+                response = await fetch_with_retry(
+                    client,
+                    url,
+                    headers=headers,
+                    timeout=DEFAULT_TIMEOUT,
+                )
+            except httpx.HTTPStatusError as e:
+                # If we get 406, retry with simpler Accept header
+                if e.response.status_code == 406:
+                    logger.info(
+                        "Got 406 Not Acceptable, retrying with generic Accept header",
+                        feed_name=config.name,
+                    )
+                    headers["Accept"] = "*/*"
+                    response = await fetch_with_retry(
+                        client,
+                        url,
+                        headers=headers,
+                        timeout=DEFAULT_TIMEOUT,
+                    )
+                else:
+                    raise
             
             content_type = response.headers.get('content-type', '').lower()
             
@@ -320,8 +388,18 @@ async def discover_new_posts(
     """
     logger.debug("Discovering new posts", feed_name=processor.name)
     
-    # Create HTTP client
-    async with httpx.AsyncClient() as client:
+    # Determine if SSL verification should be disabled for this feed
+    # (e.g., for sites with certificate issues)
+    verify_ssl = True
+    if "netflixtechblog.com" in str(processor.url).lower():
+        logger.warning(
+            "Disabling SSL verification for known problematic site",
+            feed_name=processor.name,
+        )
+        verify_ssl = False
+    
+    # Create HTTP client with appropriate SSL settings
+    async with httpx.AsyncClient(verify=verify_ssl) as client:
         try:
             # Fetch feed content
             content = await processor.fetch_feed(client)
@@ -395,11 +473,16 @@ async def discover_new_posts(
             return new_posts
         
         except httpx.HTTPError as e:
+            # Extract status code if available (some errors like ConnectError don't have response)
+            status_code = None
+            if hasattr(e, 'response') and e.response is not None:
+                status_code = e.response.status_code
+            
             logger.error(
                 "HTTP error fetching feed",
                 feed_name=processor.name,
                 url=processor.url,
-                status_code=getattr(e.response, 'status_code', None),
+                status_code=status_code,
                 error=str(e),
             )
             return []

@@ -64,13 +64,39 @@ class RSSFeedProcessor(FeedProcessor):
         """
         logger.debug("Fetching RSS feed", url=self.url)
         
+        # Prepare headers - use a copy to avoid modifying the shared headers
+        headers = dict(self.headers)
+        
+        # Some sites reject specific Accept headers (e.g., Uber)
+        # If we get a 406, we'll retry with a more general Accept header
+        url_str = str(self.url)
+        if "uber.com" in url_str.lower():
+            headers["Accept"] = "*/*"
+        
         # Make the request
-        response = await client.get(
-            str(self.url),
-            headers=self.headers,
-            follow_redirects=True,
-        )
-        response.raise_for_status()
+        try:
+            response = await client.get(
+                url_str,
+                headers=headers,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # If we get 406 Not Acceptable, retry with simpler Accept header
+            if e.response.status_code == 406:
+                logger.info(
+                    "Got 406 Not Acceptable, retrying with generic Accept header",
+                    url=self.url,
+                )
+                headers["Accept"] = "*/*"
+                response = await client.get(
+                    url_str,
+                    headers=headers,
+                    follow_redirects=True,
+                )
+                response.raise_for_status()
+            else:
+                raise
         
         # Get the content
         content = response.content
@@ -133,6 +159,15 @@ class RSSFeedProcessor(FeedProcessor):
         """
         logger.debug("Parsing RSS feed content")
         
+        # First check if content is HTML (likely HTML page instead of RSS)
+        if content.strip().startswith(b'<!DOCTYPE') or b'<html' in content[:500]:
+            logger.warning(
+                "Feed URL returned HTML instead of RSS/XML",
+                url=self.url,
+            )
+            # Try to extract articles from HTML using BeautifulSoup
+            return await self._parse_html_as_feed(content)
+        
         # Parse the feed using feedparser
         # This is CPU-bound, so we run it in a thread pool
         loop = asyncio.get_running_loop()
@@ -143,12 +178,19 @@ class RSSFeedProcessor(FeedProcessor):
         
         # Check for parsing errors
         if hasattr(feed, 'bozo') and feed.bozo and hasattr(feed, 'bozo_exception'):
-            # Log the error but continue with what we could parse
             logger.warning(
                 "RSS feed parsing error",
                 url=self.url,
                 error=str(feed.bozo_exception),
             )
+            
+            # If parsing failed severely, try to recover with HTML parsing
+            if not hasattr(feed, 'entries') or not feed.entries:
+                logger.info(
+                    "Attempting fallback HTML parsing for malformed RSS",
+                    url=self.url,
+                )
+                return await self._parse_html_as_feed(content)
         
         # Extract entries
         entries = feed.entries if hasattr(feed, 'entries') else []
@@ -169,6 +211,155 @@ class RSSFeedProcessor(FeedProcessor):
             result.append(entry_dict)
         
         return result
+    
+    async def _parse_html_as_feed(self, content: bytes) -> List[Dict[str, Any]]:
+        """
+        Attempt to parse an HTML page as a feed by extracting article links.
+        This is a fallback for sites that serve HTML instead of RSS feeds.
+        
+        Args:
+            content: Raw HTML content
+            
+        Returns:
+            List[Dict[str, Any]]: List of extracted entries
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            base_url = str(self.url)
+            
+            def parse_html():
+                soup = BeautifulSoup(content, 'html.parser')
+                entries = []
+                
+                # Look for article elements and links within them
+                # Priority order: article > h1/h2 links > post containers > generic links
+                
+                # Strategy 1: Look for <article> elements
+                for article in soup.find_all('article'):
+                    link = article.find('a', href=True)
+                    if link:
+                        href = link.get('href', '')
+                        title = link.get_text(strip=True)
+                        
+                        if href and title and len(title) > 5:
+                            # Resolve relative URLs
+                            if not href.startswith(('http://', 'https://')):
+                                href = urljoin(base_url, href)
+                            
+                            # Look for date in article
+                            published = None
+                            time_elem = article.find('time')
+                            if time_elem:
+                                published = time_elem.get_text(strip=True)
+                            
+                            entries.append({
+                                'title': title,
+                                'link': href,
+                                'published': published,
+                            })
+                
+                # Strategy 2: Look for heading links (h1, h2, h3) in post containers
+                if not entries:
+                    for container in soup.find_all(['div', 'section'], class_=lambda x: x and any(
+                        keyword in (x or '').lower() for keyword in ['post', 'article', 'item', 'entry']
+                    )):
+                        for heading in container.find_all(['h1', 'h2', 'h3']):
+                            link = heading.find('a', href=True)
+                            if link:
+                                href = link.get('href', '')
+                                title = link.get_text(strip=True)
+                                
+                                if href and title and len(title) > 5:
+                                    if not href.startswith(('http://', 'https://')):
+                                        href = urljoin(base_url, href)
+                                    
+                                    published = None
+                                    time_elem = container.find('time')
+                                    if time_elem:
+                                        published = time_elem.get_text(strip=True)
+                                    
+                                    entries.append({
+                                        'title': title,
+                                        'link': href,
+                                        'published': published,
+                                    })
+                
+                # Strategy 3: Look for links that look like article URLs
+                if not entries:
+                    for link in soup.find_all('a', href=True):
+                        href = link.get('href', '')
+                        
+                        # Skip non-article links
+                        if not href or href.startswith('#') or href.startswith('javascript'):
+                            continue
+                        
+                        # Check if URL looks like an article (common blog patterns)
+                        url_lower = href.lower()
+                        article_patterns = [
+                            '/blog/', '/post/', '/article/', '/news/', '/stories/',
+                            '/engineering/', '/tech/', '/research/', '-2024', '-2025'
+                        ]
+                        # Add year patterns
+                        article_patterns.extend(f'/20{year % 100:02d}' for year in range(2020, 2026))
+                        is_article_like = any(pattern in url_lower for pattern in article_patterns)
+                        
+                        if not is_article_like:
+                            continue
+                        
+                        # Resolve relative URLs
+                        if not href.startswith(('http://', 'https://')):
+                            href = urljoin(base_url, href)
+                        
+                        # Extract potential title
+                        title = link.get_text(strip=True)
+                        if not title or len(title) < 5:
+                            continue
+                        
+                        # Skip navigation and common non-article links
+                        skip_keywords = ['home', 'menu', 'cart', 'account', 'login', 'sign up', 
+                                       'about us', 'contact', 'privacy', 'terms', 'subscribe',
+                                       'newsletter', 'email', 'download']
+                        if any(keyword in title.lower() for keyword in skip_keywords):
+                            continue
+                        
+                        # Try to get publication date from nearby time elements
+                        time_elem = link.find_next('time')
+                        published = None
+                        if time_elem:
+                            published = time_elem.get_text(strip=True)
+                        
+                        entries.append({
+                            'title': title,
+                            'link': href,
+                            'published': published,
+                        })
+                
+                # Deduplicate by URL
+                seen = set()
+                unique_entries = []
+                for entry in entries:
+                    url = entry.get('link', '')
+                    if url and url not in seen:
+                        seen.add(url)
+                        unique_entries.append(entry)
+                
+                return unique_entries[:20]  # Return top 20 entries
+            
+            entries = await loop.run_in_executor(None, parse_html)
+            logger.info(
+                "Extracted entries from HTML feed",
+                url=self.url,
+                entry_count=len(entries),
+            )
+            return entries
+        
+        except Exception as e:
+            logger.error(
+                "Failed to parse HTML as feed",
+                url=self.url,
+                error=str(e),
+            )
+            return []
     
     async def extract_posts(self, entries: List[Dict[str, Any]]) -> List[BlogPost]:
         """
