@@ -17,6 +17,16 @@ This document outlines a list of opinionated refactoring goals to further improv
     *   Current state: `extract_article_content` gets all images but doesn't smartly pick a hero image.
     *   Goal: Wire up `image_extractor.get_main_image` to the main pipeline.
 
+## 🧠 Knowledge Retention & Enhanced Summarization
+
+*   **Address `pgvector` Embedding Dimension Limit:**
+    *   Current state: `pgvector` indices (both `ivfflat` and `hnsw`) have a hard limit of 2000 dimensions. The currently specified embedding model (`Qwen3-Embedding-8B`) outputs 4096 dimensions, making it incompatible.
+    *   Goal: Identify and configure an Ollama-compatible embedding model that outputs **2000 dimensions or fewer**.
+*   **Evaluate Improved LLM Models:** Research and integrate better LLM models for summarization and other generation tasks, moving beyond initial defaults to more performant or cost-effective options. (This is distinct from the immediate `pgvector` embedding compatibility issue).
+*   **Implement Spaced Repetition UI:**
+    *   Current state: Backend APIs exist for marking as read and retrieving review items.
+    *   Goal: Update the web dashboard (`monitor/web/templates/index.html`) to expose "Mark as Read" functionality and a "Review Queue" tab.
+
 ## 🚀 Refactoring Goals
 
 *   **Standardize Error Handling:** Implement a consistent, application-wide error handling strategy (e.g., custom exception classes, centralized error logging, user-friendly error messages).
@@ -29,4 +39,3 @@ This document outlines a list of opinionated refactoring goals to further improv
 *   **Update Dependencies:** Regularly review and update project dependencies to leverage new features, security fixes, and performance improvements.
 *   **Document API Endpoints:** Provide comprehensive documentation for all API endpoints, including request/response schemas, authentication requirements, and error codes.
 *   **Centralize Configuration:** Refine and centralize application configuration management to reduce redundancy and simplify deployment across different environments.
-*   **Evaluate Improved LLM Models:** Research and integrate better LLM models for summarization and other generation tasks, moving beyond initial defaults to more performant or cost-effective options.
