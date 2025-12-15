@@ -112,8 +112,8 @@ class EmbeddingModelType(str, Enum):
 
 class EmbeddingConfig(BaseModel):
     """Configuration for embedding generation."""
-    text_model_type: EmbeddingModelType = EmbeddingModelType.OPENAI
-    text_model_name: str = "text-embedding-ada-002"
+    text_model_type: EmbeddingModelType = EmbeddingModelType.OLLAMA
+    text_model_name: str = "nomic-embed-text:v1.5"
     image_model_type: Optional[EmbeddingModelType] = None
     image_model_name: Optional[str] = None
     
@@ -180,6 +180,31 @@ class VectorDBConfig(BaseModel):
         except Exception:
             raise ValueError(f"Invalid connection string: {v}")
         return v
+
+
+class LLMProvider(str, Enum):
+    """Providers for LLM generation."""
+    OPENAI = "openai"
+    OLLAMA = "ollama"
+    CUSTOM = "custom"
+
+
+class LLMConfig(BaseModel):
+    """Configuration for LLM generation (summarization, etc.)."""
+    provider: LLMProvider = LLMProvider.OPENAI
+    model_name: str = "gpt-4o-mini"
+    api_key: Optional[SecretStr] = None
+    base_url: Optional[str] = None
+    temperature: float = 0.7
+    max_tokens: int = 1024
+    timeout_seconds: int = 60
+
+    @model_validator(mode='after')
+    def validate_llm_config(self) -> 'LLMConfig':
+        """Validate that required credentials are provided for the chosen provider."""
+        if self.provider == LLMProvider.OPENAI and not self.api_key:
+            raise ValueError("OpenAI API key is required when using OpenAI for LLM generation")
+        return self
 
 
 class SchedulerConfig(BaseModel):
@@ -293,6 +318,7 @@ class Settings(BaseSettings):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     vector_db: VectorDBConfig = Field(default_factory=VectorDBConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
     # Article processing (full-content capture, summarisation, archival…)
     article_processing: ArticleProcessingConfig = Field(default_factory=ArticleProcessingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)

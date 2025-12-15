@@ -613,8 +613,8 @@ class PostgresCacheClient(BaseCacheClient):
         if isinstance(value, (dict, list)):
             try:
                 return json.dumps(value).encode("utf-8")
-            except (TypeError, ValueError):
-                return pickle.dumps(value)
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Value is not JSON serializable and pickle is disabled: {e}")
 
         return pickle.dumps(value)
 

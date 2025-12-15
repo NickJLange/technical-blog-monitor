@@ -49,6 +49,7 @@ class AppContext:
         self.browser_pool = None  # Will be initialized later
         self.cache_client = None  # Will be initialized later
         self.embedding_client = None  # Will be initialized later
+        self.generation_client = None  # Will be initialized later
         self.vector_db_client = None  # Will be initialized later
         self.shutdown_event = asyncio.Event()
         self.active_tasks: Set[asyncio.Task] = set()
@@ -67,6 +68,7 @@ class AppContext:
         await self._init_cache()
         await self._init_browser_pool()
         await self._init_embedding_client()
+        await self._init_generation_client()
         await self._init_vector_db()
         
         # Set up scheduler
@@ -104,6 +106,17 @@ class AppContext:
                     text_model=self.settings.embedding.text_model_name,
                     image_model=self.settings.embedding.image_model_name)
     
+    async def _init_generation_client(self) -> None:
+        """Initialize the generation client."""
+        from monitor.llm import get_generation_client
+        
+        logger.info("Initializing generation client")
+        self.generation_client = get_generation_client(self.settings.llm)
+        await self.exit_stack.enter_async_context(self.generation_client)
+        logger.info("Generation client initialized", 
+                    provider=self.settings.llm.provider.value,
+                    model=self.settings.llm.model_name)
+
     async def _init_vector_db(self) -> None:
         """Initialize the vector database client."""
         from monitor.vectordb import get_vector_db_client
@@ -311,6 +324,19 @@ async def process_post(app_context: AppContext, post, semaphore: asyncio.Semapho
                 app_context.thread_pool
             )
             
+            # Generate summary if enabled
+            ai_summary = None
+            if app_context.settings.article_processing.generate_summary:
+                try:
+                    logger.info("Generating AI summary", url=post.url)
+                    # Limit context to avoid token limits, though 10k chars is usually fine for modern models
+                    # Ideally we'd tokenize, but chars is a cheap proxy
+                    prompt = f"Summarize the following technical blog post in a dense, insight-focused paragraph. Ignore generic intro/outro. Focus on the core technical details:\n\n{content.text[:15000]}"
+                    ai_summary = await app_context.generation_client.generate(prompt)
+                    logger.info("AI summary generated", url=post.url)
+                except Exception as e:
+                    logger.warning("Failed to generate AI summary", url=post.url, error=str(e))
+
             # Generate embeddings
             text_embedding = await app_context.embedding_client.embed_text(content.text)
             
@@ -330,10 +356,11 @@ async def process_post(app_context: AppContext, post, semaphore: asyncio.Semapho
                 metadata={
                     "source": post.source,
                     "author": content.author,
-                    "summary": content.summary,
+                    "summary": ai_summary or content.summary,
                     "screenshot_path": str(screenshot_path) if screenshot_path else None,
                     "word_count": content.word_count,
-                    "tags": content.tags
+                    "tags": content.tags,
+                    "ai_summary": ai_summary
                 }
             )
             
@@ -512,6 +539,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     """Main entry point for the application."""
+    # Ensure BROWSER environment variable does not interfere with Pydantic-settings
+    os.environ.pop("BROWSER", None)
     try:
         # Parse command line arguments
         args = parse_args()
