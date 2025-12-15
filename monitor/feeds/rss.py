@@ -108,6 +108,35 @@ class RSSFeedProcessor(FeedProcessor):
         # Get the content
         content = response.content
         
+        # Handle various compression formats if httpx didn't auto-decompress
+        if content.startswith(b'\x1f\x8b'):  # gzip magic number
+            import gzip
+            try:
+                content = gzip.decompress(content)
+                logger.debug("Decompressed gzip content", url=self.url)
+            except Exception as e:
+                logger.warning("Failed to decompress gzip content", url=self.url, error=str(e))
+        elif content.startswith(b'\x28\xb5\x2f\xfd'):  # zstd magic number
+            import zstandard
+            try:
+                dctx = zstandard.ZstdDecompressor()
+                content = dctx.decompress(content)
+                logger.debug("Decompressed zstd content", url=self.url)
+            except Exception as e:
+                logger.warning("Failed to decompress zstd content", url=self.url, error=str(e))
+        else:
+            # Try brotli as fallback for unknown compression
+            try:
+                import brotli
+                decompressed = brotli.decompress(content)
+                # Only use if it produces valid content (check for HTML markers)
+                if b'<' in decompressed and b'>' in decompressed:
+                    content = decompressed
+                    logger.debug("Decompressed brotli content", url=self.url)
+            except Exception:
+                # Not brotli, or decompression failed - use original content
+                pass
+        
         # Check if the content is valid XML
         if not content.strip().startswith(b'<?xml') and not content.strip().startswith(b'<rss'):
             # Try to find RSS feed URL in HTML
