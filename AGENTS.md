@@ -11,24 +11,27 @@ Python daemon that monitors technical blogs, renders posts in headless browsers,
 ## Common Commands
 
 ```bash
-# Install dependencies
-pip install poetry && poetry install
+# Install dependencies (using uv)
+uv sync
 
 # Install Playwright browsers (one-time)
-poetry run playwright install
+uv run playwright install
 
 # Run tests
-poetry run pytest -q
+uv run pytest -q
+
+# Run tests with coverage
+uv run pytest monitor/tests/ -v
 
 # Linting and type checking
-poetry run ruff .
-poetry run mypy monitor/
+uv run ruff .
+uv run mypy monitor/
 
 # Run once in debug mode
-poetry run monitor --once --log-level DEBUG
+uv run monitor --once --log-level DEBUG
 
 # Run specific feed
-poetry run monitor --feed "AWS Blog" --once --log-level DEBUG
+uv run monitor --feed "Simon Willison" --once --log-level DEBUG
 ```
 
 ## Architecture
@@ -79,15 +82,25 @@ CACHE__BACKEND=memory          # Options: memory, filesystem, redis
 CACHE__CACHE_TTL_HOURS=168
 CACHE__REDIS_URL=redis://localhost:6379/0  # If backend=redis
 
-# Embeddings
-EMBEDDING__TEXT_MODEL_TYPE=openai
-EMBEDDING__OPENAI_API_KEY=sk-...
-EMBEDDING__EMBEDDING_DIMENSIONS=1536
+# Embeddings (Ollama with MRL truncation)
+EMBEDDING__TEXT_MODEL_TYPE=ollama
+EMBEDDING__TEXT_MODEL_NAME=hf.co/JonathanMiddleton/Qwen3-Embedding-8B-GGUF:BF16
+EMBEDDING__EMBEDDING_DIMENSIONS=1920  # MRL allows truncation from full 4096
+
+# LLM (for summarization)
+LLM__PROVIDER=ollama
+LLM__MODEL_NAME=hf.co/unsloth/Olmo-3-7B-Instruct-GGUF:BF16
+LLM__TIMEOUT_SECONDS=300
 
 # Vector DB
-VECTOR_DB__DB_TYPE=qdrant      # Options: qdrant, chroma, pinecone, milvus, weaviate
-VECTOR_DB__CONNECTION_STRING=http://localhost:6333
+VECTOR_DB__DB_TYPE=pgvector      # Options: pgvector, qdrant, chroma, pinecone, milvus, weaviate
+VECTOR_DB__CONNECTION_STRING=postgresql://localhost:5432/blogmon
+VECTOR_DB__TEXT_VECTOR_DIMENSION=1920  # Must match EMBEDDING__EMBEDDING_DIMENSIONS
 VECTOR_DB__COLLECTION_NAME=technical_blog_posts
+
+# Article Processing
+ARTICLE_PROCESSING__FULL_CONTENT_CAPTURE=true
+ARTICLE_PROCESSING__GENERATE_SUMMARY=true
 ```
 
 ## Code Patterns

@@ -19,10 +19,18 @@ This document outlines a list of opinionated refactoring goals to further improv
 
 ## 🧠 Knowledge Retention & Enhanced Summarization
 
-*   **Address `pgvector` Embedding Dimension Limit:**
-    *   Current state: `pgvector` indices (both `ivfflat` and `hnsw`) have a hard limit of 2000 dimensions. The currently specified embedding model (`Qwen3-Embedding-8B`) outputs 4096 dimensions, making it incompatible.
-    *   Goal: Identify and configure an Ollama-compatible embedding model that outputs **2000 dimensions or fewer**.
-*   **Evaluate Improved LLM Models:** Research and integrate better LLM models for summarization and other generation tasks, moving beyond initial defaults to more performant or cost-effective options. (This is distinct from the immediate `pgvector` embedding compatibility issue).
+*   **✅ COMPLETED: Address `pgvector` Embedding Dimension Limit via MRL:**
+    *   Previous state: `pgvector` indices have hard limit of 2000 dimensions. Qwen3-8B outputs 4096 dimensions.
+    *   Solution: Implemented Matryoshka Representation Learning (MRL) truncation. Qwen3-8B embeddings now truncated to 1920 dimensions via `EMBEDDING__EMBEDDING_DIMENSIONS` config.
+    *   Status: Working in production with HNSW indexing strategy.
+    *   Reference: Commits 65af53a, e10a1f7
+
+*   **✅ COMPLETED: AI-Generated Summaries:**
+    *   Implemented full LLM summarization pipeline using Ollama (Olmo-3-7B model).
+    *   Summaries are insight-focused, 256-token limit, stored in article metadata.
+    *   Increased timeout to 300s for slower local models.
+    *   Status: All articles generate summaries on discovery.
+
 *   **Implement Spaced Repetition UI:**
     *   Current state: Backend APIs exist for marking as read and retrieving review items.
     *   Goal: Update the web dashboard (`monitor/web/templates/index.html`) to expose "Mark as Read" functionality and a "Review Queue" tab.
