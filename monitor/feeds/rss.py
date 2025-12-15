@@ -270,54 +270,73 @@ class RSSFeedProcessor(FeedProcessor):
                 # Look for article elements and links within them
                 # Priority order: article > h1/h2 links > post containers > generic links
                 
-                # Strategy 1: Look for <article> elements
-                for article in soup.find_all('article'):
-                    # Find the main article link by selecting the longest text link
-                    # (article titles are usually longer than breadcrumbs/author names)
-                    link = None
-                    
-                    links_in_article = article.find_all('a', href=True)
-                    if links_in_article:
-                        # Sort by text length descending, prefer longer titles (article titles are longer)
-                        sorted_links = sorted(
-                            links_in_article,
-                            key=lambda l: len(l.get_text(strip=True)),
-                            reverse=True
-                        )
-                        # Find first link with substantial text (skip breadcrumbs, author names, etc.)
-                        for candidate in sorted_links:
-                            text_len = len(candidate.get_text(strip=True))
-                            if text_len > 10:  # Article titles are typically > 10 chars
-                                link = candidate
-                                break
+                # Strategy 1: Look for <article> elements (but only if they look like blog articles)
+                article_elements = soup.find_all('article')
+                if article_elements:
+                    for article in article_elements:
+                        # Find the main article link by selecting the longest text link
+                        # (article titles are usually longer than breadcrumbs/author names)
+                        link = None
                         
-                        # Fallback: if no link with > 10 chars, use first link with > 5 chars
-                        if not link:
+                        links_in_article = article.find_all('a', href=True)
+                        if links_in_article:
+                            # Sort by text length descending, prefer longer titles (article titles are longer)
+                            sorted_links = sorted(
+                                links_in_article,
+                                key=lambda l: len(l.get_text(strip=True)),
+                                reverse=True
+                            )
+                            # Find first link with substantial text (skip breadcrumbs, author names, etc.)
                             for candidate in sorted_links:
-                                if len(candidate.get_text(strip=True)) > 5:
+                                text_len = len(candidate.get_text(strip=True))
+                                if text_len > 10:  # Article titles are typically > 10 chars
                                     link = candidate
                                     break
-                    
-                    if link:
-                        href = link.get('href', '')
-                        title = link.get_text(strip=True)
+                            
+                            # Fallback: if no link with > 10 chars, use first link with > 5 chars
+                            if not link:
+                                for candidate in sorted_links:
+                                    if len(candidate.get_text(strip=True)) > 5:
+                                        link = candidate
+                                        break
                         
-                        if href and title and len(title) > 5:
-                            # Resolve relative URLs
-                            if not href.startswith(('http://', 'https://')):
-                                href = urljoin(base_url, href)
+                        if link:
+                            href = link.get('href', '')
+                            title = link.get_text(strip=True)
                             
-                            # Look for date in article
-                            published = None
-                            time_elem = article.find('time')
-                            if time_elem:
-                                published = time_elem.get_text(strip=True)
-                            
-                            entries.append({
-                                'title': title,
-                                'link': href,
-                                'published': published,
-                            })
+                            if href and title and len(title) > 5:
+                                # Resolve relative URLs
+                                if not href.startswith(('http://', 'https://')):
+                                    href = urljoin(base_url, href)
+                                
+                                # Skip non-article links (navigation, products, etc)
+                                url_lower = href.lower()
+                                skip_url_patterns = ['/categories/', '/tags/', '/authors/', '/archives/', 
+                                                    '/platform', '/solutions/', '/features/', '/pricing', 
+                                    '/gitlab-duo', '/why-gitlab', '/the-source']
+                                if any(pattern in url_lower for pattern in skip_url_patterns):
+                                    continue
+                                
+                                # Look for date in article
+                                published = None
+                                time_elem = article.find('time')
+                                if time_elem:
+                                    published = time_elem.get_text(strip=True)
+                                
+                                entries.append({
+                                    'title': title,
+                                    'link': href,
+                                    'published': published,
+                                })
+                
+                # Check if Strategy 1 found actual blog articles (not navigation)
+                # If <article> tags have blog-like URLs, use them; otherwise skip to URL pattern matching
+                if entries:
+                    has_blog_pattern = any('/blog/' in entry.get('link', '').lower() for entry in entries)
+                    if not has_blog_pattern:
+                        # Articles found but don't look like blog posts - these might be navigation/product cards
+                        logger.debug("Found <article> elements but URLs don't look like blog articles, skipping to URL pattern matching")
+                        entries = []
                 
                 # Strategy 2: Look for heading links (h1, h2, h3) in post containers
                 if not entries:
@@ -381,6 +400,12 @@ class RSSFeedProcessor(FeedProcessor):
                                        'about us', 'contact', 'privacy', 'terms', 'subscribe',
                                        'newsletter', 'email', 'download']
                         if any(keyword in title.lower() for keyword in skip_keywords):
+                            continue
+                        
+                        # Skip category pages and product/platform pages (e.g., /blog/categories/, /platform/, etc)
+                        skip_url_patterns = ['/categories/', '/tags/', '/authors/', '/archives/', 
+                                            '/platform', '/solutions/', '/features/', '/pricing']
+                        if any(pattern in href.lower() for pattern in skip_url_patterns):
                             continue
                         
                         # Try to get publication date from nearby time elements

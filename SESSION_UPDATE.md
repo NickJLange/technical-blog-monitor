@@ -69,19 +69,41 @@ All 11 tested feeds now working:
 
 ### Optional Improvements
 1. **GitLab Blog:** Extracting product descriptions (4 entries) instead of articles
-   - Could add site-specific filtering for `.gitlab.com/blog/` paths
-   - Current: "PlatformThe most comprehensive AI-powered DevSecOps Platform"
-   
+    - Could add site-specific filtering for `.gitlab.com/blog/` paths
+    - Current: "PlatformThe most comprehensive AI-powered DevSecOps Platform"
+    
 2. **Anthropic:** Extracting only 1 entry from complex HTML
-   - Could inspect and add site-specific patterns for anthropic.com/news
-   
+    - Could inspect and add site-specific patterns for anthropic.com/news
+    
 3. **Medium Blog Integration:** Browser pool still not passing through properly
-   - Affects: Airbnb Engineering, Lyft Engineering, Netflix Tech Blog
-   - Current implementation exists but needs testing
+    - Affects: Airbnb Engineering, Lyft Engineering, Netflix Tech Blog
+    - Current implementation exists but needs testing
 
 4. **Stubborn 403 Sites:** Still failing completely
-   - OpenAI Blog, DoorDash, Docker, Twitter, Meta
-   - May require browser rendering or other bot-evasion techniques
+    - OpenAI Blog, DoorDash, Docker, Twitter, Meta
+    - May require browser rendering or other bot-evasion techniques
+
+5. **Author Detection:** Authors not being properly detected across feeds
+    - Root cause: Feed entries use inconsistent author field names (author, creator, dc:creator, etc.)
+    - Some feeds have author in nested structures not being properly extracted
+    - Affects metadata quality and author attribution in vector DB
+
+6. **HTML Parser Migration:** Migrate from BeautifulSoup to justhtml
+    - BeautifulSoup has limited HTML5 support which causes parsing issues on some sites
+    - justhtml (https://github.com/EmilStenstrom/justhtml) offers better HTML5 compliance
+    - Would improve reliability of article extraction and metadata parsing
+    - Affects: `monitor/feeds/rss.py`, `monitor/feeds/spotify.py`, `monitor/feeds/medium.py`
+
+7. **Web Dashboard Summaries:** Dashboard currently shows only links, not article summaries
+    - Need to restore summary display in web dashboard template
+    - PostSummary model has summary field but it's not being rendered
+    - Improves usability for browsing posts without clicking through
+
+8. **Pagination for Older Posts:** Extract older entries beyond the initial page
+    - Many HTML-based feeds only show first 20 posts, with "older posts" or "next page" links
+    - Need to detect and follow pagination links to extract historical content
+    - Improves coverage for long-running feeds and backfilling on first run
+    - Affects: `monitor/feeds/rss.py` (_parse_html_as_feed method)
 
 ## Code Quality
 
