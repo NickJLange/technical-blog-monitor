@@ -278,6 +278,7 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
     from monitor.feeds.medium import MediumFeedProcessor
     from monitor.feeds.spotify import SpotifyFeedProcessor
     from monitor.feeds.browser_fallback import BrowserFallbackFeedProcessor
+    from monitor.feeds.html_fallback import HTMLFallbackFeedProcessor
     
     # Check URL patterns first
     url = str(config.url).lower()
@@ -286,6 +287,18 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
     if 'medium.com' in url:
         logger.debug("Using Medium processor for Medium blog", feed_name=config.name)
         return MediumFeedProcessor(config, browser_pool=browser_pool)
+    
+    # Check for sites that serve HTML instead of RSS/Atom feeds
+    html_only_sites = [
+        'google.com/blog',
+        'docker.com/blog',
+        'openai.com/blog',
+        'twitter.com/engineering',
+        'careersatdoordash.com',
+    ]
+    if any(site in url for site in html_only_sites):
+        logger.debug("Using HTML fallback processor for HTML-only blog", feed_name=config.name)
+        return HTMLFallbackFeedProcessor(config, browser_pool=browser_pool)
     
     # Check for Cloudflare-protected sites that need browser fallback
     cloudflare_sites = [
