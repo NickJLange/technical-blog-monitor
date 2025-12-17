@@ -260,11 +260,28 @@ async def process_feed(app_context: AppContext, feed_name: str) -> None:
                     )
 
             # Capture articles concurrently (bounded by semaphore)
-            new_posts = await asyncio.gather(*[_capture(p) for p in new_posts])
+            # Use return_exceptions=True so one failure doesn't crash the entire feed
+            captured = await asyncio.gather(*[_capture(p) for p in new_posts], return_exceptions=True)
+            
+            # Filter out any exceptions and log failures
+            failed_count = 0
+            new_posts = []
+            for result in captured:
+                if isinstance(result, Exception):
+                    failed_count += 1
+                    logger.warning(
+                        "Article capture failed",
+                        feed_name=feed_name,
+                        error=str(result),
+                    )
+                else:
+                    new_posts.append(result)
+            
             logger.info(
                 "Full article capture complete",
                 feed_name=feed_name,
-                processed=len(new_posts),
+                succeeded=len(new_posts),
+                failed=failed_count,
             )
         
         # Process each post in parallel with a semaphore to limit concurrency
