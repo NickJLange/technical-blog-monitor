@@ -1,4 +1,22 @@
+#!/usr/bin/env python3
+"""Generate HTML web view from vector database entries."""
+import asyncio
+import sys
+import webbrowser
+from pathlib import Path
+from datetime import datetime
 
+sys.path.insert(0, str(Path(__file__).parent))
+
+from monitor.config import load_settings
+from monitor.vectordb import get_vector_db_client
+
+async def generate_html(records):
+    """Generate HTML from records."""
+    # Sort by publish_date (newest first)
+    records.sort(key=lambda r: r.publish_date if r.publish_date else datetime.min, reverse=True)
+    
+    html_content = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -189,81 +207,105 @@
             </header>
             
             <div class="stats">
-                <strong>3</strong> articles tracked
+                <strong>{count}</strong> articles tracked
             </div>
-    <div class="articles-grid">
-
-            <div class="article-card">
-                <div class="article-header">
-                    <h3 class="article-title">Nov 13, 2025PolicyDisrupting the first reported AI-orchestrated cyber espionage campaign</h3>
-                    <div class="article-meta">
-                        <span class="meta-item">📅 Dec 17, 2025</span>
-                        <span class="meta-item">✍️ Unknown</span>
-                    </div>
-                </div>
-                
-                <div class="article-body">
-                    <div class="summary-label">AI Summary</div>
-                    <p class="article-summary">A recent high-profile cyberattack demonstrated that state-sponsored actors have effectively weaponized agentic AI systems—such as large language models integrated with code generation and tool-use capabilities—to automate the majority of complex cyber operations, including reconnaissance, exploit...</p>
-                    <div class="article-tags">
-                        
-                    </div>
-                </div>
-                
-                <div class="article-footer">
-                    <a href="https://www.anthropic.com/news/disrupting-AI-espionage" class="read-more" target="_blank">Read Article →</a>
-                    <span class="source-badge">Unknown</span>
-                </div>
+    """
+    
+    if not records:
+        html_content += """
+            <div class="empty-state">
+                <h2>No articles found</h2>
+                <p>Run the monitor to start collecting articles.</p>
             </div>
+        """
+    else:
+        html_content += '<div class="articles-grid">\n'
+        
+        for record in records:
+            # Format date
+            pub_date = record.publish_date.strftime("%b %d, %Y") if record.publish_date else "Unknown"
             
-            <div class="article-card">
-                <div class="article-header">
-                    <h3 class="article-title">Nov 18, 2025AnnouncementsAnthropic partners with Rwandan Government and ALX to bring AI education to hundreds of thousands of learners across Africa</h3>
-                    <div class="article-meta">
-                        <span class="meta-item">📅 Dec 17, 2025</span>
-                        <span class="meta-item">✍️ Unknown</span>
-                    </div>
-                </div>
-                
-                <div class="article-body">
-                    <div class="summary-label">AI Summary</div>
-                    <p class="article-summary">Anthropic’s partnership with Rwanda’s government and ALX deploys Chidi—an AI-powered learning companion based on Claude—across large-scale educational initiatives, providing hundreds of thousands of African students and professionals with access to AI-driven skills development in data analytics, ...</p>
-                    <div class="article-tags">
-                        
-                    </div>
-                </div>
-                
-                <div class="article-footer">
-                    <a href="https://www.anthropic.com/news/rwandan-government-partnership-ai-education" class="read-more" target="_blank">Read Article →</a>
-                    <span class="source-badge">Unknown</span>
-                </div>
-            </div>
+            # Prepare summary
+            summary = record.summary or record.get_summary() or "No summary available"
+            if len(summary) > 300:
+                summary = summary[:297] + "..."
             
+            # Prepare author
+            author = record.author or "Unknown"
+            
+            # Prepare source
+            source = record.source or "Unknown"
+            
+            # Get tags from metadata
+            tags = record.metadata.get("tags", []) if record.metadata else []
+            tags_html = ''.join(f'<span class="tag">{tag}</span>' for tag in tags[:3]) if tags else ''
+            
+            html_content += f"""
             <div class="article-card">
                 <div class="article-header">
-                    <h3 class="article-title">Nov 18, 2025AnnouncementsMicrosoft, NVIDIA, and Anthropic announce strategic partnerships</h3>
+                    <h3 class="article-title">{record.title}</h3>
                     <div class="article-meta">
-                        <span class="meta-item">📅 Dec 17, 2025</span>
-                        <span class="meta-item">✍️ Unknown</span>
+                        <span class="meta-item">📅 {pub_date}</span>
+                        <span class="meta-item">✍️ {author}</span>
                     </div>
                 </div>
                 
                 <div class="article-body">
                     <div class="summary-label">AI Summary</div>
-                    <p class="article-summary">Anthropic is expanding Claude’s infrastructure on Microsoft Azure by leveraging next-generation NVIDIA hardware—specifically targeting the Grace Blackwell and Vera Rubin systems for its high-scale compute needs, including a $30 billion compute capacity commitment (up to one gigawatt) aimed at acc...</p>
+                    <p class="article-summary">{summary}</p>
                     <div class="article-tags">
-                        
+                        {tags_html}
                     </div>
                 </div>
                 
                 <div class="article-footer">
-                    <a href="https://www.anthropic.com/news/microsoft-nvidia-anthropic-announce-strategic-partnerships" class="read-more" target="_blank">Read Article →</a>
-                    <span class="source-badge">Unknown</span>
+                    <a href="{record.url}" class="read-more" target="_blank">Read Article →</a>
+                    <span class="source-badge">{source}</span>
                 </div>
             </div>
-            </div>
-
+            """
+        
+        html_content += '</div>\n'
+    
+    html_content += """
         </div>
     </body>
     </html>
+    """
     
+    return html_content.replace("{count}", str(len(records)))
+
+async def main():
+    """Main function."""
+    settings = load_settings()
+    vdb = await get_vector_db_client(settings.vector_db)
+    
+    # Fetch all records
+    records = await vdb.list_all(limit=1000)
+    
+    print(f"Found {len(records)} records in database")
+    
+    if not records:
+        print("No records found. Run the monitor first.")
+        return
+    
+    # Generate HTML
+    html = await generate_html(records)
+    
+    # Write to file
+    output_file = Path("latest_articles.html")
+    with open(output_file, "w") as f:
+        f.write(html)
+    
+    print(f"Generated {output_file}")
+    
+    # Try to open in browser
+    try:
+        webbrowser.open(f"file://{output_file.absolute()}")
+        print("Opened in default browser.")
+    except Exception as e:
+        print(f"Could not open browser: {e}")
+        print(f"Please open {output_file.absolute()} manually.")
+
+if __name__ == "__main__":
+    asyncio.run(main())

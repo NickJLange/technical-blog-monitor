@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 try:
     from monitor.models.article import ArticleContent
-except ImportError:
+except (ImportError, AttributeError):
     # Define a dummy class if import fails
     class ArticleContent:
         pass
@@ -66,6 +66,8 @@ def load_cache_entries(cache_dir: Path) -> List[Dict[str, Any]]:
                     "title": getattr(data, "title", "No Title"),
                     "url": str(getattr(data, "url", "")),
                     "source": getattr(data, "metadata", {}).get("domain", "Unknown"),
+                    "author": getattr(data, "author", None),
+                    "tags": getattr(data, "tags", []),
                     "publish_date": getattr(data, "publish_date", None),
                     "extracted_at": getattr(data, "extracted_at", None),
                     "summary": getattr(data, "summary", "") or getattr(data, "content", "")[:200] + "..."
@@ -74,9 +76,13 @@ def load_cache_entries(cache_dir: Path) -> List[Dict[str, Any]]:
                 if hasattr(data, "metadata") and isinstance(data.metadata, dict):
                     if "feed_name" in data.metadata:
                         post_data["source"] = data.metadata["feed_name"]
+                    # Extract AI-generated summary if available
+                    if "ai_summary" in data.metadata:
+                        post_data["ai_summary"] = data.metadata["ai_summary"]
             
             if post_data:
-                if not post_data.get("publish_date"):
+                # Use original article publish_date; only fall back to meta created_at if missing
+                if not post_data.get("publish_date") and meta.get("created_at"):
                     post_data["publish_date"] = meta.get("created_at")
                 posts.append(post_data)
                 
@@ -228,6 +234,41 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
             color: var(--accent-hover);
         }
         
+        .card-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            flex-wrap: wrap;
+        }
+        
+        .card-author {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .card-author::before {
+            content: "✍";
+        }
+        
+        .card-tags {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        }
+        
+        .tag {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            background: rgba(168, 85, 247, 0.15);
+            color: #d8b4fe;
+            border-radius: 0.25rem;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+        
         .card-summary {
             color: var(--text-secondary);
             font-size: 0.95rem;
@@ -239,11 +280,31 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
             overflow: hidden;
         }
         
+        .ai-summary-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
+            background: rgba(99, 102, 241, 0.2);
+            color: #c7d2fe;
+            border-radius: 0.2rem;
+            margin-top: 0.25rem;
+        }
+        
         .card-footer {
             margin-top: auto;
             pt: 1rem;
             border-top: 1px solid var(--border);
             padding-top: 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .footer-links {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
         }
         
         .read-more {
@@ -324,8 +385,9 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
             cards.forEach(card => {
                 const title = card.querySelector('.card-title').textContent.toLowerCase();
                 const source = card.querySelector('.source').textContent.toLowerCase();
+                const tags = card.querySelector('.card-tags')?.textContent.toLowerCase() || '';
                 
-                if (title.includes(searchTerm) || source.includes(searchTerm)) {
+                if (title.includes(searchTerm) || source.includes(searchTerm) || tags.includes(searchTerm)) {
                     card.style.display = 'flex';
                 } else {
                     card.style.display = 'none';
@@ -343,12 +405,34 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
         title = post.get("title", "No Title")
         url = post.get("url", "#")
         date_str = format_date(post.get("publish_date"))
-        summary = post.get("summary", "")
+        author = post.get("author", "")
+        tags = post.get("tags", [])
         
-        # Clean up summary if it's too raw
+        # Prefer AI summary if available, otherwise use feed summary
+        ai_summary = post.get("ai_summary", "")
+        summary = ai_summary or post.get("summary", "")
+        
+        # Clean up summary
         if len(summary) > 200:
             summary = summary[:197] + "..."
             
+        # Build tags HTML
+        tags_html = ""
+        if tags:
+            tags_list = tags if isinstance(tags, list) else [t.strip() for t in str(tags).split(',')]
+            tags_html = "".join([f'<span class="tag">{tag}</span>' for tag in tags_list[:3]])
+        
+        # Build meta HTML
+        meta_html = ""
+        if author:
+            meta_html += f'<div class="card-author">{author}</div>'
+        
+        # Build tags section
+        tags_section = f'<div class="card-tags">{tags_html}</div>' if tags_html else ""
+        
+        # Add AI summary badge if used
+        summary_badge = '<span class="ai-summary-badge">AI Summary</span>' if ai_summary else ""
+        
         article_html = f"""
         <article class="card">
             <div class="card-header">
@@ -358,14 +442,18 @@ def generate_html(posts: List[Dict[str, Any]], output_file: Path):
             <h2 class="card-title">
                 <a href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>
             </h2>
-            <p class="card-summary">{summary}</p>
+            {meta_html}
+            {tags_section}
+            <p class="card-summary">{summary}{summary_badge}</p>
             <div class="card-footer">
-                <a href="{url}" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
+                <div class="footer-links">
+                    <a href="{url}" target="_blank" rel="noopener noreferrer" class="read-more">
+                        Read Article
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                    </a>
+                </div>
             </div>
         </article>
         """
