@@ -230,8 +230,8 @@ async def generate_html(records):
             if len(summary) > 300:
                 summary = summary[:297] + "..."
             
-            # Prepare author
-            author = record.author or "Unknown"
+            # Prepare author (fallback to source if not found)
+            author = record.author or record.source or "Unknown"
             
             # Prepare source
             source = record.source or "Unknown"
