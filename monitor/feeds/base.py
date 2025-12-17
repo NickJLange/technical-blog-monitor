@@ -27,6 +27,10 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+try:
+    import cloudscraper
+except ImportError:
+    cloudscraper = None
 
 from monitor.config import FeedConfig
 from monitor.models.blog_post import BlogPost
@@ -105,6 +109,46 @@ class FeedProcessor(abc.ABC):
             httpx.HTTPError: If the HTTP request fails
         """
         pass
+    
+    async def fetch_feed_with_cf_fallback(self, client: httpx.AsyncClient) -> bytes:
+        """
+        Fetch feed with automatic Cloudflare fallback.
+        
+        First tries normal httpx fetch. If that fails with a Cloudflare-related
+        error, falls back to cloudscraper.
+        
+        Args:
+            client: HTTP client to use for the request
+            
+        Returns:
+            bytes: Raw feed content
+        """
+        try:
+            # Try normal fetch first
+            return await self.fetch_feed(client)
+        except httpx.HTTPStatusError as e:
+            # Check if this is a Cloudflare challenge (typically 403 or 503)
+            if (e.response.status_code in (403, 503) and 
+                _is_cloudflare_protected(str(self.url))):
+                logger.info(
+                    "Normal fetch failed with Cloudflare error, trying cloudscraper",
+                    feed_name=self.name,
+                    status_code=e.response.status_code,
+                )
+                try:
+                    return await fetch_with_cloudscraper(
+                        str(self.url),
+                        headers=self.headers,
+                    )
+                except Exception as cf_error:
+                    logger.error(
+                        "Cloudscraper fallback also failed",
+                        feed_name=self.name,
+                        error=str(cf_error),
+                    )
+                    raise
+            else:
+                raise
     
     @abc.abstractmethod
     async def parse_feed(self, content: bytes) -> List[Dict[str, Any]]:
@@ -196,6 +240,71 @@ def _should_retry_429(exception: Exception) -> bool:
     return False
 
 
+def _is_cloudflare_protected(url: str) -> bool:
+    """
+    Check if a URL is likely protected by Cloudflare.
+    
+    Args:
+        url: URL to check
+        
+    Returns:
+        bool: True if URL is likely Cloudflare-protected
+    """
+    cloudflare_sites = [
+        'openai.com/blog',
+        'docker.com/blog',
+        'twitter.com/engineering',
+        'blog.twitter.com/engineering',
+        'careersatdoordash.com',
+        'meta.com',
+        'facebook.com',
+    ]
+    url_lower = url.lower()
+    return any(site in url_lower for site in cloudflare_sites)
+
+
+async def fetch_with_cloudscraper(
+    url: str,
+    headers: Optional[Dict[str, str]] = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> bytes:
+    """
+    Fetch a URL using cloudscraper to bypass Cloudflare protection.
+    
+    Args:
+        url: URL to fetch
+        headers: Optional headers to include in the request
+        timeout: Request timeout in seconds
+        
+    Returns:
+        bytes: Response content
+        
+    Raises:
+        Exception: If cloudscraper is not installed or fetch fails
+    """
+    if cloudscraper is None:
+        raise RuntimeError("cloudscraper is not installed. Install it with: uv pip install cloudscraper")
+    
+    logger.info("Fetching with cloudscraper for Cloudflare bypass", url=url)
+    
+    try:
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(
+            url,
+            headers=headers or {},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.content
+    except Exception as e:
+        logger.error(
+            "cloudscraper fetch failed",
+            url=url,
+            error=str(e),
+        )
+        raise
+
+
 @retry(
     retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException, httpx.HTTPStatusError)),
     stop=stop_after_attempt(5),  # More attempts for rate limiting
@@ -280,6 +389,13 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
     from monitor.feeds.browser_fallback import BrowserFallbackFeedProcessor
     from monitor.feeds.html_fallback import HTMLFallbackFeedProcessor
     
+    logger.info(
+        "get_feed_processor called",
+        feed_name=config.name,
+        url=config.url,
+        browser_pool_available=browser_pool is not None,
+    )
+    
     # Check URL patterns first
     url = str(config.url).lower()
     
@@ -288,31 +404,37 @@ async def get_feed_processor(config: FeedConfig, browser_pool: Optional[BrowserP
         logger.debug("Using Medium processor for Medium blog", feed_name=config.name)
         return MediumFeedProcessor(config, browser_pool=browser_pool)
     
+    # NOTE: Cloudflare-protected sites are challenging because:
+    # - They serve challenge pages that require JS execution
+    # - Browser rendering with wait_until='domcontentloaded' may still load challenge page
+    # - Full CF bypass requires dedicated tools or longer wait times
+    # For now, these feeds will fail and will need CF-specific handling or API keys
+    #
+    # Cloudflare sites that need special handling:
+    # - openai.com/blog, docker.com/blog, twitter.com/engineering, careersatdoordash.com (HTML blogs behind CF)
+    # - facebook.com, meta.com (RSS feeds behind CF)
+    
     # Check for sites that serve HTML instead of RSS/Atom feeds
     html_only_sites = [
         'google.com/blog',
         'docker.com/blog',
         'openai.com/blog',
         'twitter.com/engineering',
+        'blog.twitter.com/engineering',
         'careersatdoordash.com',
+        'github.blog',
+        'blog.cloudflare.com',
+        'mongodb.com/blog',
+        'huggingface.co/blog',
+        'kubernetes.io/blog',
+        'canva.dev/blog',
+        'kafka.apache.org/blog',
+        'anthropic.com/news',
+        'qwenlm.github.io/blog',
     ]
     if any(site in url for site in html_only_sites):
         logger.debug("Using HTML fallback processor for HTML-only blog", feed_name=config.name)
         return HTMLFallbackFeedProcessor(config, browser_pool=browser_pool)
-    
-    # Check for Cloudflare-protected sites that need browser fallback
-    cloudflare_sites = [
-        'openai.com',
-        'careersatdoordash.com',
-        'docker.com',
-        'twitter.com',
-        'x.com',
-        'meta.com',
-        'facebook.com',
-    ]
-    if any(site in url for site in cloudflare_sites):
-        logger.debug("Using browser fallback processor for Cloudflare-protected site", feed_name=config.name)
-        return BrowserFallbackFeedProcessor(config, browser_pool=browser_pool)
     
     if 'engineering.atspotify.com' in url:
         logger.debug("Using Spotify processor for Spotify Engineering blog", feed_name=config.name)
@@ -440,8 +562,8 @@ async def discover_new_posts(
     # Create HTTP client with appropriate SSL settings
     async with httpx.AsyncClient(verify=verify_ssl) as client:
         try:
-            # Fetch feed content
-            content = await processor.fetch_feed(client)
+            # Fetch feed content (with Cloudflare fallback if needed)
+            content = await processor.fetch_feed_with_cf_fallback(client)
             
             # Generate fingerprint for change detection
             fingerprint = await processor.get_feed_fingerprint(content)

@@ -37,10 +37,18 @@ class BrowserFallbackFeedProcessor(RSSFeedProcessor):
         """
         super().__init__(config)
         self.browser_pool = browser_pool
+        logger.debug(
+            "Initialized BrowserFallbackFeedProcessor",
+            feed_name=config.name,
+            has_browser_pool=browser_pool is not None,
+        )
     
     async def fetch_feed(self, client: httpx.AsyncClient) -> bytes:
         """
         Fetch the feed, falling back to browser if HTTP fails.
+        
+        For Cloudflare-protected sites, prefer browser rendering if available
+        since HTTP often returns 403 or challenge pages.
         
         Args:
             client: HTTP client to use for the request
@@ -51,10 +59,23 @@ class BrowserFallbackFeedProcessor(RSSFeedProcessor):
         Raises:
             httpx.HTTPError: If both HTTP and browser methods fail
         """
+        # For Cloudflare-protected sites, try browser rendering first if available
+        if self.browser_pool:
+            logger.info("Browser pool available, using browser rendering for Cloudflare-protected site", url=self.url)
+            try:
+                return await self._fetch_with_browser()
+            except Exception as e:
+                logger.warning(
+                    "Browser rendering failed, falling back to HTTP",
+                    url=self.url,
+                    error=str(e),
+                )
+                # Continue to HTTP fallback below
+        
         logger.debug("Attempting HTTP fetch", url=self.url)
         
         try:
-            # Try HTTP first
+            # Try HTTP
             response = await client.get(
                 str(self.url),
                 headers=dict(self.headers),
@@ -64,19 +85,17 @@ class BrowserFallbackFeedProcessor(RSSFeedProcessor):
             
             # Check for bot detection signals
             if response.status_code == 403 or 'cf-mitigated' in response.headers.get('cf-mitigated', '').lower():
-                # Bot detected, try browser rendering
-                logger.info(
-                    "HTTP returned 403 or bot-detection header, trying browser rendering",
+                # Bot detected
+                logger.error(
+                    "HTTP returned 403 or bot-detection header",
                     url=self.url,
                     status=response.status_code,
                 )
-                if self.browser_pool:
-                    return await self._fetch_with_browser()
-                else:
-                    # No browser pool available, but we got HTML content anyway
-                    # Some 403 pages still contain useful HTML
-                    logger.warning("Got 403 and no browser pool available, using limited HTML content")
-                    return response.content
+                raise httpx.HTTPStatusError(
+                    f"Bot detection ({response.status_code})",
+                    request=None,
+                    response=response,
+                )
             
             response.raise_for_status()
             return response.content

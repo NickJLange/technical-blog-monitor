@@ -40,39 +40,63 @@ class HTMLFallbackFeedProcessor(FeedProcessor):
 
     async def fetch_feed(self, client: httpx.AsyncClient) -> bytes:
         """
-        Fetch the HTML page using browser rendering.
+        Fetch the HTML page using browser rendering or HTTP fallback.
 
         Args:
-            client: HTTP client (unused, we use browser_pool instead)
+            client: HTTP client for fallback fetching
 
         Returns:
-            bytes: HTML content from rendered page
+            bytes: HTML content from rendered page or HTTP response
 
         Raises:
-            RuntimeError: If browser pool is not available
+            Exception: If both browser rendering and HTTP fetching fail
         """
-        if not self.browser_pool:
-            raise RuntimeError("Browser pool required for HTML fallback processor")
-
-        logger.info("Fetching blog page with browser rendering", url=self.url)
-
-        try:
-            # Render the page using Playwright
-            page, page_info = await self.browser_pool.render_page(str(self.url))
-
+        # Try browser rendering first if available
+        if self.browser_pool:
+            logger.info("Fetching blog page with browser rendering", url=self.url)
             try:
-                content = await page.content()
-                logger.debug(
-                    "Browser rendering successful",
-                    url=self.url,
-                    content_length=len(content),
+                # Use domcontentloaded for faster loading, Cloudflare sites may time out on networkidle
+                page, page_info = await self.browser_pool.render_page(
+                    str(self.url),
+                    wait_until='domcontentloaded',
                 )
-                return content.encode("utf-8")
-            finally:
-                await page.close()
-
+                try:
+                    # Wait a bit for any dynamic content to load
+                    await asyncio.sleep(1)
+                    content = await page.content()
+                    logger.debug(
+                        "Browser rendering successful",
+                        url=self.url,
+                        content_length=len(content),
+                    )
+                    return content.encode("utf-8")
+                finally:
+                    await page.close()
+            except Exception as e:
+                logger.warning(
+                    "Browser rendering failed, falling back to HTTP",
+                    url=self.url,
+                    error=str(e),
+                )
+        
+        # Fall back to HTTP fetch
+        logger.info("Fetching blog page via HTTP", url=self.url)
+        try:
+            response = await client.get(
+                str(self.url),
+                headers=self.headers,
+                timeout=30.0,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+            logger.debug(
+                "HTTP fetch successful",
+                url=self.url,
+                content_length=len(response.content),
+            )
+            return response.content
         except Exception as e:
-            logger.error("Browser rendering failed", url=self.url, error=str(e))
+            logger.error("HTTP fetch failed", url=self.url, error=str(e))
             raise
 
     async def parse_feed(self, content: bytes) -> List[Dict[str, Any]]:
