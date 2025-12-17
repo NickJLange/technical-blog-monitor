@@ -53,23 +53,42 @@ Sample records with AI-generated summaries:
 
 ## Next Steps for Future Threads
 
-1. **Rate Limiting Resilience**: Some high-traffic sites (Anthropic, OpenAI) return 429 errors. Consider:
+### High Priority
+
+1. **Site-Specific Author Extraction Adapters**:
+   - Create `monitor/extractors/site_adapters/` directory
+   - Implement adapters for major blogs:
+     - `medium_adapter.py` - Extract from Medium's article schema
+     - `dev_adapter.py` - Dev.to specific selectors
+     - `github_adapter.py` - GitHub blog metadata
+     - `anthropic_adapter.py` - Anthropic.com specific parsing
+     - `openai_adapter.py` - OpenAI blog specific parsing
+   - Use JSON-LD `Article` schema as fallback (contains `author` field)
+   - Integrate into `extract_author()` function to check site-specific patterns first
+   - Test with existing records to populate author field retroactively
+
+2. **Rate Limiting Resilience**: Some high-traffic sites (Anthropic, OpenAI) return 429 errors. Consider:
    - Exponential backoff for failed requests
    - Respect Retry-After headers
    - Implement request queueing with delays between requests
+   - Cache failed requests to avoid immediate retries
 
-2. **Expand Data Collection**: Let the monitor run for several hours to collect more articles across feeds
+### Medium Priority
 
-3. **Search and UI Enhancement**:
+3. **Expand Data Collection**: Let the monitor run for several hours to collect more articles across feeds
+
+4. **Search and UI Enhancement**:
    - Implement semantic search using stored embeddings
    - Build dashboard for search and filtering
    - Add tag-based filtering
 
-4. **Error Handling**: Some feeds have SSL issues (Instagram) or bad URLs (Anthropic mailto links). Consider:
+5. **Error Handling**: Some feeds have SSL issues (Instagram) or bad URLs (Anthropic mailto links). Consider:
    - Configurable SSL verification per feed
    - Better validation of feed entries before processing
 
-5. **Performance**: With large datasets, consider:
+### Lower Priority
+
+6. **Performance**: With large datasets, consider:
    - Batch processing optimizations
    - Concurrent article processing limits
    - Database query performance tuning
