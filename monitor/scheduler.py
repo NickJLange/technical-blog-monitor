@@ -49,7 +49,7 @@ def schedule_feed_jobs(scheduler: AsyncIOScheduler, feeds: List[FeedConfig]) -> 
         interval_minutes = max(1, feed.check_interval_minutes)  # Ensure at least 1 minute
         
         # Import here to avoid circular imports
-        from monitor.main import process_feed
+        from monitor.tasks import process_feed
         
         # Get the app context from the scheduler's metadata
         app_context = scheduler.app_context if hasattr(scheduler, "app_context") else None

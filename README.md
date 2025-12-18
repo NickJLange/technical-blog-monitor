@@ -15,7 +15,7 @@ A high-performance Python daemon that tracks technical blogs from major companie
 | **Pluggable embeddings** | Generate text and image embeddings with OpenAI, HuggingFace, Sentence-Transformers, or custom models. |
 | **Vector DB abstraction** | Works with Qdrant, Chroma, Pinecone, Milvus, Weaviate (choose at runtime). |
 | **Observability** | Structured JSON logging, Prometheus metrics, graceful shutdown & retries. |
-| **Container-ready** | Multi-stage Dockerfile with Playwright browsers pre-installed. |
+| **Container-ready** | Multi-stage Dockerfile (compatible with Podman) with Playwright browsers pre-installed. |
 | **Extensible** | Modular codebase—add new feeds, extractors, or DB back-ends with minimal changes. |
 
 ---
@@ -85,11 +85,11 @@ uv run monitor --once --log-level DEBUG
 uv run monitor                      # runs indefinitely
 ```
 
-### 5. Docker
+### 5. Podman
 
 ```bash
-docker build -t blog-monitor .
-docker run --env-file .env blog-monitor
+podman build -t blog-monitor .
+podman run --env-file .env blog-monitor
 ```
 
 ---

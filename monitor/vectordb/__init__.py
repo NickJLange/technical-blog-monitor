@@ -179,6 +179,10 @@ class VectorDBClient(Protocol):
         """
         ...
 
+    async def log_error(self, feed_name: str, feed_url: str, error_message: str, traceback_str: Optional[str] = None) -> bool:
+        """Log a feed processing error."""
+        ...
+
     async def close(self) -> None:
         """Close the vector database client and release resources."""
         ...

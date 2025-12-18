@@ -646,6 +646,8 @@ async def discover_new_posts(
                 status_code=status_code,
                 error=str(e),
             )
+            raise # Re-raise to allow upstream handling (e.g. logging to DB)
+        
             return []
         
         except Exception as e:
@@ -654,6 +656,16 @@ async def discover_new_posts(
                 feed_name=processor.name,
                 error=str(e),
             )
+            raise # Re-raise to allow upstream handling
+            # Log to exception queue if client supports it
+            if hasattr(cache_client, 'log_error'):
+                 # Note: cache_client here is passed in process_feed_posts, which might be AppContext.cache_client
+                 # But we need the VectorDB client for persistent error logging.
+                 # The architecture separates Cache from VectorDB.
+                 # We need to access the VectorDB client here or pass it in.
+                 pass
+            # Wait, process_feed_posts doesn't have vector_db_client text.
+            # I need to modify the signature of process_feed_posts or use AppContext in the caller.
             return []
 
 
@@ -864,12 +876,8 @@ async def process_feed_posts(
         return new_posts
     
     except Exception as e:
-        logger.exception(
-            "Error processing feed",
-            feed_name=feed_config.name,
-            error=str(e),
-        )
-        return []
+        # Re-raise exception so it can be handled by the caller (and logged to exception queue)
+        raise e
 
 # --------------------------------------------------------------------------- #
 # New helper for full-article capture

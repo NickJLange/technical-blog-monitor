@@ -115,12 +115,14 @@ def create_app(settings=None) -> FastAPI:
                 # Fallback to mock data on error
                 pass
         
-        # Return mock data for testing
+        # If no DB connection, return empty stats or error
+        # Do NOT return mock data to avoid confusion
+        logger.warning("No vector DB client available, returning empty stats")
         return DashboardStats(
-            total_posts=42,
-            posts_today=3,
-            posts_week=15,
-            sources=["Google Cloud Blog", "AWS Blog", "Azure Blog", "Uber Engineering"],
+            total_posts=0,
+            posts_today=0,
+            posts_week=0,
+            sources=[],
             latest_update=datetime.now(timezone.utc)
         )
     
@@ -150,9 +152,9 @@ def create_app(settings=None) -> FastAPI:
             except Exception as e:
                 logger.error("Error fetching posts", error=str(e))
         
-        # If no real posts, return mock data for demo
+        # If no real posts, return empty list
         if not posts:
-            # ... (mock data logic remains same)
+            logger.info("No posts found or DB disconnected")
             pass
 
         # Convert posts to summary format with explicit summary field

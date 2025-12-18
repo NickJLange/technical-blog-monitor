@@ -4,7 +4,7 @@ This guide covers running the Technical Blog Monitor as a containerized daemon u
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Using Podman Compose (Recommended)
 
 ```bash
 # Clone the repository
@@ -12,13 +12,13 @@ git clone https://github.com/NickJLange/technical-blog-monitor.git
 cd technical-blog-monitor
 
 # Start all services (PostgreSQL + Blog Monitor daemon)
-docker-compose up -d
+podman-compose up -d
 
 # View logs
-docker-compose logs -f blog-monitor
+podman-compose logs -f blog-monitor
 
 # Stop services
-docker-compose down
+podman-compose down
 ```
 
 The system will be fully operational within 60 seconds:
@@ -159,10 +159,10 @@ The Containerfile uses a two-stage build to keep the final image small:
 
 ```bash
 # The container includes a health check that validates configuration loading
-docker ps  # Shows (healthy) or (unhealthy)
+podman ps  # Shows (healthy) or (unhealthy)
 
 # Manual health check
-docker exec blog-monitor python -c "from monitor.config import load_settings; load_settings()"
+podman exec blog-monitor python -c "from monitor.config import load_settings; load_settings()"
 ```
 
 ## Volumes and Data
@@ -177,7 +177,7 @@ docker exec blog-monitor python -c "from monitor.config import load_settings; lo
 /app/cache/           # Filesystem cache root
 ```
 
-### Docker Compose Volume Mapping
+### Podman Volume Mapping
 
 ```yaml
 volumes:
@@ -188,17 +188,17 @@ volumes:
 
 ### Persisting Data
 
-With docker-compose, data is automatically persisted in named volumes:
+With podman-compose, data is automatically persisted in named volumes:
 
 ```bash
 # View volume location
-docker volume inspect blogmon_postgres_data
+podman volume inspect blogmon_postgres_data
 
 # Backup database
-docker exec blogmon-postgres pg_dump -U blogmon blogmon > backup.sql
+podman exec blogmon-postgres pg_dump -U blogmon blogmon > backup.sql
 
 # Restore database
-docker exec -i blogmon-postgres psql -U blogmon blogmon < backup.sql
+podman exec -i blogmon-postgres psql -U blogmon blogmon < backup.sql
 ```
 
 ## Networking
@@ -240,16 +240,13 @@ docker-compose ports postgres
 
 ```bash
 # Follow daemon logs
-docker-compose logs -f blog-monitor
+podman-compose logs -f blog-monitor
 
 # Last 100 lines
-docker-compose logs --tail 100 blog-monitor
+podman-compose logs --tail 100 blog-monitor
 
 # Timestamp format
-docker-compose logs --timestamps blog-monitor
-
-# With Podman
-podman logs -f blog-monitor
+podman-compose logs --timestamps blog-monitor
 ```
 
 ### Structured Logging
@@ -506,32 +503,32 @@ docker build \
 
 ```bash
 # Update uv.lock and rebuild
-docker-compose build --no-cache blog-monitor
+podman-compose build --no-cache blog-monitor
 
 # Restart with new image
-docker-compose down
-docker-compose up -d
+podman-compose down
+podman-compose up -d
 ```
 
 ### Cleaning Up
 
 ```bash
 # Stop and remove containers
-docker-compose down
+podman-compose down
 
 # Remove all data
-docker-compose down -v
+podman-compose down -v
 
 # Prune unused images/volumes
-docker image prune -a
-docker volume prune
+podman image prune -a
+podman volume prune
 ```
 
 ## Reference
 
-- [Docker Documentation](https://docs.docker.com/)
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
 - [Podman Documentation](https://docs.podman.io/)
+- [Podman Compose](https://github.com/containers/podman-compose)
+- [Docker Compose (Compatible)](https://docs.docker.com/compose/)
 - [pgvector Image](https://hub.docker.com/r/pgvector/pgvector)
 
 ---

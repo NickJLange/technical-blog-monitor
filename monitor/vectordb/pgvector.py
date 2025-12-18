@@ -116,6 +116,24 @@ class PgVectorDBClient(BaseVectorDBClient):
                     ON {self.table_name} (publish_date DESC)
                 """)
 
+                # Create table for feed errors (Exception Queue)
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS feed_errors (
+                        id SERIAL PRIMARY KEY,
+                        feed_name TEXT NOT NULL,
+                        feed_url TEXT NOT NULL,
+                        error_message TEXT NOT NULL,
+                        traceback TEXT,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        resolved BOOLEAN DEFAULT FALSE
+                    )
+                """)
+
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS feed_errors_feed_name_idx
+                    ON feed_errors (feed_name)
+                """)
+
                 logger.info(
                     "pgvector database initialized",
                     table=self.table_name,
@@ -656,4 +674,31 @@ class PgVectorDBClient(BaseVectorDBClient):
                 "Error clearing records from pgvector",
                 error=str(e),
             )
+            return False
+
+    async def log_error(self, feed_name: str, feed_url: str, error_message: str, traceback_str: Optional[str] = None) -> bool:
+        """
+        Log a feed processing error to the database.
+
+        Args:
+            feed_name: Name of the feed
+            feed_url: URL of the feed
+            error_message: Error message
+            traceback_str: Optional traceback
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO feed_errors (
+                        feed_name, feed_url, error_message, traceback, created_at
+                    ) VALUES ($1, $2, $3, $4, NOW())
+                """, feed_name, str(feed_url), error_message, traceback_str)
+                
+                logger.debug("Logged feed error", feed_name=feed_name)
+                return True
+        except Exception as e:
+            logger.error("Failed to log feed error", feed_name=feed_name, error=str(e))
             return False
