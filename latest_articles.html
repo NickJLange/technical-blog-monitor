@@ -1,551 +1,269 @@
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Technical Blog Monitor</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent: #6366f1;
-            --accent-hover: #818cf8;
-            --border: #334155;
-        }
-        
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            line-height: 1.6;
-            padding: 2rem;
-        }
-        
-        header {
-            max-width: 1200px;
-            margin: 0 auto 3rem;
-            text-align: center;
-        }
-        
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, #6366f1, #a855f7, #ec4899);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        
-        .stats {
-            color: var(--text-secondary);
-            font-size: 1.1rem;
-        }
-        
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 2rem;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .card {
-            background-color: var(--card-bg);
-            border-radius: 1rem;
-            padding: 1.5rem;
-            border: 1px solid var(--border);
-            transition: transform 0.2s, box-shadow 0.2s;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
-            border-color: var(--accent);
-        }
-        
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        
-        .source {
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--accent);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            background: rgba(99, 102, 241, 0.1);
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-        }
-        
-        .date {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-        
-        .card-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            line-height: 1.4;
-        }
-        
-        .card-title a {
-            color: var(--text-primary);
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-        
-        .card-title a:hover {
-            color: var(--accent-hover);
-        }
-        
-        .card-summary {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-            flex-grow: 1;
-            margin-bottom: 1.5rem;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        
-        .card-footer {
-            margin-top: auto;
-            pt: 1rem;
-            border-top: 1px solid var(--border);
-            padding-top: 1rem;
-        }
-        
-        .read-more {
-            display: inline-flex;
-            align-items: center;
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-        
-        .read-more:hover {
-            color: var(--accent-hover);
-        }
-        
-        .read-more svg {
-            margin-left: 0.5rem;
-            width: 16px;
-            height: 16px;
-        }
-
-        .search-container {
-            max-width: 600px;
-            margin: 0 auto 2rem;
-            position: relative;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 1rem 1.5rem;
-            border-radius: 9999px;
-            border: 1px solid var(--border);
-            background-color: var(--card-bg);
-            color: var(--text-primary);
-            font-size: 1rem;
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .search-input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-        }
-
-        @media (max-width: 768px) {
-            .grid {
-                grid-template-columns: 1fr;
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Technical Blog Monitor</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
             }
-            h1 {
-                font-size: 2rem;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <h1>Technical Blog Monitor</h1>
-        <p class="stats">Monitoring 32 Engineering Blogs • 17 Articles Cached</p>
-    </header>
-
-    <div class="search-container">
-        <input type="text" id="searchInput" class="search-input" placeholder="Search articles by title or source...">
-    </div>
-
-    <div class="grid" id="articleGrid">
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">November 30, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/top-announcements-of-aws-reinvent-2025/" target="_blank" rel="noopener noreferrer">Top announcements of AWS re:Invent 2025 | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Discover our most impactful innovations across analytics, AI, compute, containers, security, and more throughout the conference week.</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/top-announcements-of-aws-reinvent-2025/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">November 30, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/introducing-amazon-route-53-global-resolver-for-secure-anycast-dns-resolution-preview/" target="_blank" rel="noopener noreferrer">Introducing Amazon Route 53 Global Resolver for secure anycast DNS resolution (preview) | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Simplify hybrid DNS management with a unified service that resolves public and private domains globally through secure, anycast-based resolution while reducing operational overhead and maintaining ...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/introducing-amazon-route-53-global-resolver-for-secure-anycast-dns-resolution-preview/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">November 30, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/aws-clean-rooms-launches-privacy-enhancing-synthetic-dataset-generation-for-ml-model-training/" target="_blank" rel="noopener noreferrer">AWS Clean Rooms launches privacy-enhancing synthetic dataset generation for ML model training | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Train ML models on sensitive collaborative data by generating synthetic datasets that preserve statistical patterns while protecting individual privacy through configurable noise levels and protect...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/aws-clean-rooms-launches-privacy-enhancing-synthetic-dataset-generation-for-ml-model-training/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">github.blog</span>
-                <span class="date">November 28, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://github.blog/news-insights/company-news/the-ultimate-gift-guide-for-the-developer-in-your-life/" target="_blank" rel="noopener noreferrer">The ultimate gift guide for the developer in your life - The GitHub Blog</a>
-            </h2>
-            <p class="card-summary">Finding the perfect 2025 holiday gift for your favorite developer is easy. Shop unique presents from hats to mugs to Amazeballs</p>
-            <div class="card-footer">
-                <a href="https://github.blog/news-insights/company-news/the-ultimate-gift-guide-for-the-developer-in-your-life/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">November 26, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/amazon-route-53-launches-accelerated-recovery-for-managing-public-dns-records/" target="_blank" rel="noopener noreferrer">Amazon Route 53 launches Accelerated recovery for managing public DNS records | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Amazon Route 53 now offers Accelerated recovery for managing public DNS records, a new business continuity feature designed to provide a 60-minute recovery time objective (RTO) during service disru...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/amazon-route-53-launches-accelerated-recovery-for-managing-public-dns-records/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">github.blog</span>
-                <span class="date">November 25, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://github.blog/developer-skills/programming-languages-and-frameworks/why-developers-still-flock-to-python-guido-van-rossum-on-readability-ai-and-the-future-of-programming/" target="_blank" rel="noopener noreferrer">Why developers still flock to Python: Guido van Rossum on readability, AI, and the future of programming - The GitHub Blog</a>
-            </h2>
-            <p class="card-summary">Discover how Python changed developer culture—and see why it keeps evolving.</p>
-            <div class="card-footer">
-                <a href="https://github.blog/developer-skills/programming-languages-and-frameworks/why-developers-still-flock-to-python-guido-van-rossum-on-readability-ai-and-the-future-of-programming/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">github.blog</span>
-                <span class="date">November 25, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://github.blog/ai-and-ml/github-copilot/how-githubs-agentic-security-principles-make-our-ai-agents-as-secure-as-possible/" target="_blank" rel="noopener noreferrer">How GitHub's agentic security principles make our AI agents as secure as possible - The GitHub Blog</a>
-            </h2>
-            <p class="card-summary">Learn more about the agentic security principles that we use to build secure AI products—and how you can apply them to your own agents.</p>
-            <div class="card-footer">
-                <a href="https://github.blog/ai-and-ml/github-copilot/how-githubs-agentic-security-principles-make-our-ai-agents-as-secure-as-possible/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">November 24, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-how-to-join-aws-reinvent-2025-plus-kiro-ga-and-lots-of-launches-nov-24-2025/" target="_blank" rel="noopener noreferrer">AWS Weekly Roundup: How to join AWS re:Invent 2025, plus Kiro GA, and lots of launches (Nov 24, 2025) | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Next week, don’t miss AWS re:Invent, Dec. 1-5, 2025, for the latest AWS news, expert insights, and global cloud community connections! Our News Blog team is finalizing posts to introduce the most e...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-how-to-join-aws-reinvent-2025-plus-kiro-ga-and-lots-of-launches-nov-24-2025/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">azure.microsoft.com</span>
-                <span class="date">November 24, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://azure.microsoft.com/en-us/blog/introducing-claude-opus-4-5-in-microsoft-foundry/" target="_blank" rel="noopener noreferrer">Introducing Claude Opus 4.5 in Microsoft Foundry | Microsoft Azure Blog</a>
-            </h2>
-            <p class="card-summary">Announcing Anthropic's newest model, Claude Opus 4.5, in Microsoft Foundry. Opus 4.5 is now available in public preview in Microsoft Foundry, GitHub Copilot paid plans, and Microsoft Copilot Studio.</p>
-            <div class="card-footer">
-                <a href="https://azure.microsoft.com/en-us/blog/introducing-claude-opus-4-5-in-microsoft-foundry/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">November 21, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/new-one-click-onboarding-and-notebooks-with-ai-agent-in-amazon-sagemaker-unified-studio/" target="_blank" rel="noopener noreferrer">New one-click onboarding and notebooks with a built-in AI agent in Amazon SageMaker Unified Studio | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Amazon SageMaker Unified Studio introduces new one-click onboarding experiences and serverless notebooks with a built-in AI agent without any manual set up or provisioning of your domain or compute...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/new-one-click-onboarding-and-notebooks-with-ai-agent-in-amazon-sagemaker-unified-studio/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">azure.microsoft.com</span>
-                <span class="date">November 18, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://azure.microsoft.com/en-us/blog/azure-at-microsoft-ignite-2025-all-the-intelligent-cloud-news-explained/" target="_blank" rel="noopener noreferrer">Azure at Microsoft Ignite 2025: All the intelligent cloud news explained | Microsoft Azure Blog</a>
-            </h2>
-            <p class="card-summary">Explore Azure announcements from Microsoft Ignite: AI-first strategies, agentic tools, and data innovations for the intelligent cloud.</p>
-            <div class="card-footer">
-                <a href="https://azure.microsoft.com/en-us/blog/azure-at-microsoft-ignite-2025-all-the-intelligent-cloud-news-explained/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">azure.microsoft.com</span>
-                <span class="date">November 18, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://azure.microsoft.com/en-us/blog/microsoft-foundry-scale-innovation-on-a-modular-interoperable-and-secure-agent-stack/" target="_blank" rel="noopener noreferrer">Build and scale AI agents with Microsoft Foundry</a>
-            </h2>
-            <p class="card-summary">Discover Microsoft Foundry, including hosted agents, multi-agent workflows, agentic RAG, MCP tools, and agent observability. Learn more.</p>
-            <div class="card-footer">
-                <a href="https://azure.microsoft.com/en-us/blog/microsoft-foundry-scale-innovation-on-a-modular-interoperable-and-secure-agent-stack/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">September 01, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/now-open-aws-asia-pacific-new-zealand-region/" target="_blank" rel="noopener noreferrer">Now Open - AWS Asia Pacific (New Zealand) Region | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">AWS has launched its first New Zealand Region with three Availability Zones, marking its 16th Region in Asia Pacific and enabling local data residency for New Zealand organizations.</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/now-open-aws-asia-pacific-new-zealand-region/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">September 01, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-amazon-ec2-amazon-q-developer-ipv6-updates-and-more-september-1-2025/" target="_blank" rel="noopener noreferrer">AWS Weekly Roundup: Amazon EC2, Amazon Q Developer, IPv6 updates, and more (September 1, 2025) | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">My LinkedIn feed was absolutely packed this week with pictures from the AWS Heroes Summit event in Seattle. It was heartwarming to see so many familiar faces and new Heroes coming together. For tho...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-amazon-ec2-amazon-q-developer-ipv6-updates-and-more-september-1-2025/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">August 28, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/new-general-purpose-amazon-ec2-m8i-and-m8i-flex-instances-are-now-available/" target="_blank" rel="noopener noreferrer">New general-purpose Amazon EC2 M8i and M8i Flex instances are now available | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">M8i and M8i-flex instances powered by Intel Xeon processors offer up to 15% better price performance, 20% higher performance, and 2.5 times more memory throughput compared to previous generations.</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/new-general-purpose-amazon-ec2-m8i-and-m8i-flex-instances-are-now-available/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">August 26, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/aws-services-scale-to-new-heights-for-prime-day-2025-key-metrics-and-milestones/" target="_blank" rel="noopener noreferrer">AWS services scale to new heights for Prime Day 2025: key metrics and milestones | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">Amazon Prime Day 2025 achieved record-breaking sales with enhanced AI shopping features, while AWS infrastructure handled unprecedented volumes of data—including 1.7 trillion Lambda invocations per...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/aws-services-scale-to-new-heights-for-prime-day-2025-key-metrics-and-milestones/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-        <article class="card">
-            <div class="card-header">
-                <span class="source">aws.amazon.com</span>
-                <span class="date">August 25, 2025</span>
-            </div>
-            <h2 class="card-title">
-                <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-amazon-aurora-10th-anniversary-amazon-ec2-r8-instances-amazon-bedrock-and-more-august-25-2025/" target="_blank" rel="noopener noreferrer">AWS Weekly Roundup: Amazon Aurora 10th anniversary, Amazon EC2 R8 instances, Amazon Bedrock and more (August 25, 2025) | AWS News Blog</a>
-            </h2>
-            <p class="card-summary">As I was preparing for this week’s roundup, I couldn’t help but reflect on how database technology has evolved over the past decade. It’s fascinating to see how architectural decisions made years a...</p>
-            <div class="card-footer">
-                <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-amazon-aurora-10th-anniversary-amazon-ec2-r8-instances-amazon-bedrock-and-more-august-25-2025/" target="_blank" rel="noopener noreferrer" class="read-more">
-                    Read Article
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                </a>
-            </div>
-        </article>
-        
-    </div>
-
-    <script>
-        const searchInput = document.getElementById('searchInput');
-        const articleGrid = document.getElementById('articleGrid');
-        const cards = document.querySelectorAll('.card');
-
-        searchInput.addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
             
-            cards.forEach(card => {
-                const title = card.querySelector('.card-title').textContent.toLowerCase();
-                const source = card.querySelector('.source').textContent.toLowerCase();
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 40px 20px;
+            }
+            
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            
+            header {
+                text-align: center;
+                color: white;
+                margin-bottom: 40px;
+            }
+            
+            header h1 {
+                font-size: 2.5em;
+                margin-bottom: 10px;
+            }
+            
+            header p {
+                font-size: 1.1em;
+                opacity: 0.9;
+            }
+            
+            .articles-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+                gap: 24px;
+                margin-bottom: 40px;
+            }
+            
+            .article-card {
+                background: white;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+                display: flex;
+                flex-direction: column;
+            }
+            
+            .article-card:hover {
+                transform: translateY(-8px);
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+            }
+            
+            .article-header {
+                padding: 24px 24px 16px;
+                border-bottom: 2px solid #f0f0f0;
+            }
+            
+            .article-title {
+                font-size: 1.3em;
+                font-weight: 600;
+                color: #1a1a1a;
+                margin-bottom: 8px;
+                line-height: 1.4;
+            }
+            
+            .article-meta {
+                font-size: 0.85em;
+                color: #666;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+            
+            .meta-item {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            
+            .article-body {
+                padding: 20px 24px;
+                flex-grow: 1;
+                display: flex;
+                flex-direction: column;
+            }
+            
+            .summary-label {
+                font-size: 0.75em;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                color: #667eea;
+                margin-bottom: 8px;
+            }
+            
+            .article-summary {
+                font-size: 0.95em;
+                color: #555;
+                line-height: 1.6;
+                margin-bottom: 12px;
+                flex-grow: 1;
+            }
+            
+            .article-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 12px;
+            }
+            
+            .tag {
+                display: inline-block;
+                background: #f0f0f0;
+                color: #667eea;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.75em;
+                font-weight: 500;
+            }
+            
+            .article-footer {
+                padding: 16px 24px 20px;
+                border-top: 1px solid #f0f0f0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .read-more {
+                display: inline-block;
+                color: #667eea;
+                font-weight: 600;
+                font-size: 0.95em;
+                text-decoration: none;
+                transition: color 0.2s ease;
+            }
+            
+            .read-more:hover {
+                color: #764ba2;
+                text-decoration: underline;
+            }
+            
+            .source-badge {
+                background: #667eea;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.75em;
+                font-weight: 600;
+            }
+            
+            .empty-state {
+                text-align: center;
+                padding: 60px 20px;
+                color: white;
+            }
+            
+            .empty-state h2 {
+                font-size: 1.8em;
+                margin-bottom: 10px;
+            }
+            
+            .stats {
+                text-align: center;
+                color: white;
+                margin-bottom: 20px;
+                font-size: 1.1em;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>🚀 Technical Blog Monitor</h1>
+                <p>Latest articles from the world's best tech blogs</p>
+            </header>
+            
+            <div class="stats">
+                <strong>3</strong> articles tracked
+            </div>
+    <div class="articles-grid">
+
+            <div class="article-card">
+                <div class="article-header">
+                    <h3 class="article-title">Nov 13, 2025PolicyDisrupting the first reported AI-orchestrated cyber espionage campaign</h3>
+                    <div class="article-meta">
+                        <span class="meta-item">📅 Dec 17, 2025</span>
+                        <span class="meta-item">✍️ Unknown</span>
+                    </div>
+                </div>
                 
-                if (title.includes(searchTerm) || source.includes(searchTerm)) {
-                    card.style.display = 'flex';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+                <div class="article-body">
+                    <div class="summary-label">AI Summary</div>
+                    <p class="article-summary">A recent high-profile cyberattack demonstrated that state-sponsored actors have effectively weaponized agentic AI systems—such as large language models integrated with code generation and tool-use capabilities—to automate the majority of complex cyber operations, including reconnaissance, exploit...</p>
+                    <div class="article-tags">
+                        
+                    </div>
+                </div>
+                
+                <div class="article-footer">
+                    <a href="https://www.anthropic.com/news/disrupting-AI-espionage" class="read-more" target="_blank">Read Article →</a>
+                    <span class="source-badge">Unknown</span>
+                </div>
+            </div>
+            
+            <div class="article-card">
+                <div class="article-header">
+                    <h3 class="article-title">Nov 18, 2025AnnouncementsAnthropic partners with Rwandan Government and ALX to bring AI education to hundreds of thousands of learners across Africa</h3>
+                    <div class="article-meta">
+                        <span class="meta-item">📅 Dec 17, 2025</span>
+                        <span class="meta-item">✍️ Unknown</span>
+                    </div>
+                </div>
+                
+                <div class="article-body">
+                    <div class="summary-label">AI Summary</div>
+                    <p class="article-summary">Anthropic’s partnership with Rwanda’s government and ALX deploys Chidi—an AI-powered learning companion based on Claude—across large-scale educational initiatives, providing hundreds of thousands of African students and professionals with access to AI-driven skills development in data analytics, ...</p>
+                    <div class="article-tags">
+                        
+                    </div>
+                </div>
+                
+                <div class="article-footer">
+                    <a href="https://www.anthropic.com/news/rwandan-government-partnership-ai-education" class="read-more" target="_blank">Read Article →</a>
+                    <span class="source-badge">Unknown</span>
+                </div>
+            </div>
+            
+            <div class="article-card">
+                <div class="article-header">
+                    <h3 class="article-title">Nov 18, 2025AnnouncementsMicrosoft, NVIDIA, and Anthropic announce strategic partnerships</h3>
+                    <div class="article-meta">
+                        <span class="meta-item">📅 Dec 17, 2025</span>
+                        <span class="meta-item">✍️ Unknown</span>
+                    </div>
+                </div>
+                
+                <div class="article-body">
+                    <div class="summary-label">AI Summary</div>
+                    <p class="article-summary">Anthropic is expanding Claude’s infrastructure on Microsoft Azure by leveraging next-generation NVIDIA hardware—specifically targeting the Grace Blackwell and Vera Rubin systems for its high-scale compute needs, including a $30 billion compute capacity commitment (up to one gigawatt) aimed at acc...</p>
+                    <div class="article-tags">
+                        
+                    </div>
+                </div>
+                
+                <div class="article-footer">
+                    <a href="https://www.anthropic.com/news/microsoft-nvidia-anthropic-announce-strategic-partnerships" class="read-more" target="_blank">Read Article →</a>
+                    <span class="source-badge">Unknown</span>
+                </div>
+            </div>
+            </div>
+
+        </div>
+    </body>
+    </html>
     

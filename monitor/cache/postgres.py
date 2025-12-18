@@ -635,8 +635,9 @@ class PostgresCacheClient(BaseCacheClient):
             return None
 
         try:
-            return json.loads(data)
-        except json.JSONDecodeError:
+            # Decode bytes to string first (json.loads requires string in Python 3.6+)
+            return json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
             try:
                 return pickle.loads(data)  # nosec B301: trusted internal cache
             except pickle.PickleError:

@@ -115,12 +115,14 @@ def create_app(settings=None) -> FastAPI:
                 # Fallback to mock data on error
                 pass
         
-        # Return mock data for testing
+        # If no DB connection, return empty stats or error
+        # Do NOT return mock data to avoid confusion
+        logger.warning("No vector DB client available, returning empty stats")
         return DashboardStats(
-            total_posts=42,
-            posts_today=3,
-            posts_week=15,
-            sources=["Google Cloud Blog", "AWS Blog", "Azure Blog", "Uber Engineering"],
+            total_posts=0,
+            posts_today=0,
+            posts_week=0,
+            sources=[],
             latest_update=datetime.now(timezone.utc)
         )
     
@@ -150,14 +152,37 @@ def create_app(settings=None) -> FastAPI:
             except Exception as e:
                 logger.error("Error fetching posts", error=str(e))
         
-        # If no real posts, return mock data for demo
+        # If no real posts, return empty list
         if not posts:
-            # ... (mock data logic remains same)
+            logger.info("No posts found or DB disconnected")
             pass
 
+        # Convert posts to summary format with explicit summary field
+        posts_data = []
+        for p in posts:
+            # Extract source and word count from metadata
+            source = p.source or (p.metadata.get("source") if p.metadata and isinstance(p.metadata, dict) else None) or "Unknown"
+            word_count = None
+            if p.metadata and isinstance(p.metadata, dict):
+                word_count = p.metadata.get("word_count")
+            
+            # Create PostSummary object
+            post_summary = PostSummary(
+                id=p.id,
+                title=p.title,
+                url=str(p.url),
+                source=source,
+                author=p.author,
+                publish_date=p.publish_date,
+                summary=p.get_summary(),
+                tags=[],
+                word_count=word_count
+            )
+            posts_data.append(post_summary.model_dump(by_alias=False, mode='json'))
+        
         return {
-            "posts": [p.to_dict() for p in posts],
-            "total": len(posts) # Approx
+            "posts": posts_data,
+            "total": len(posts_data)
         }
 
     @app.post("/api/posts/{post_id}/read")

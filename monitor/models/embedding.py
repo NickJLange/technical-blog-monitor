@@ -37,6 +37,7 @@ class EmbeddingRecord(BaseModel):
     author: Optional[str] = None
     publish_date: Optional[datetime] = None
     content_snippet: Optional[str] = None
+    summary: Optional[str] = None
     
     # Embedding metadata
     text_model_id: Optional[str] = None
@@ -134,6 +135,14 @@ class EmbeddingRecord(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         """Convert the embedding record to a dictionary with camelCase keys."""
         return self.model_dump(by_alias=True, mode='json')
+    
+    def get_summary(self) -> Optional[str]:
+        """Get the best available summary from metadata or content_snippet."""
+        if self.summary:
+            return self.summary
+        if self.metadata and isinstance(self.metadata, dict):
+            return self.metadata.get("summary") or self.metadata.get("ai_summary")
+        return self.content_snippet
     
     def to_cache_key(self) -> str:
         """Generate a cache key for this embedding record."""

@@ -5,21 +5,21 @@ This module provides functionality for extracting and downloading images
 from web pages, including finding the main image, extracting all images,
 and downloading images for further processing.
 """
-import asyncio
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
+
+from monitor.parser import parse_html
 
 # Set up structured logger
 logger = structlog.get_logger()
@@ -46,11 +46,11 @@ async def extract_images(
     logger.debug("Extracting images from HTML content")
     
     try:
-        soup = BeautifulSoup(html_content, 'html.parser')
+        parser = parse_html(html_content)
         images = []
         
         # Find all images
-        for img in soup.find_all('img'):
+        for img in parser.find_all('img'):
             # Get image source
             src = img.get('src') or img.get('data-src')
             if not src:
@@ -198,13 +198,13 @@ async def get_main_image(
     logger.debug("Finding main image")
     
     try:
-        soup = BeautifulSoup(html_content, 'html.parser')
+        parser = parse_html(html_content)
         main_image = None
         
         # Try Open Graph image first
-        og_image = soup.find('meta', property='og:image')
+        og_image = parser.find('meta', property='og:image')
         if og_image and og_image.get('content'):
-            src = og_image['content']
+            src = og_image.get('content')
             if not src.startswith(('http://', 'https://')):
                 src = urljoin(base_url, src)
             
@@ -218,9 +218,9 @@ async def get_main_image(
         
         # If no Open Graph image, try Twitter Card image
         if not main_image:
-            twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+            twitter_image = parser.find('meta', name='twitter:image')
             if twitter_image and twitter_image.get('content'):
-                src = twitter_image['content']
+                src = twitter_image.get('content')
                 if not src.startswith(('http://', 'https://')):
                     src = urljoin(base_url, src)
                 
@@ -242,9 +242,9 @@ async def get_main_image(
                 '.post img:first-of-type',
                 'img.wp-post-image',
             ]:
-                img = soup.select_one(selector)
+                img = parser.select_one(selector)
                 if img and img.get('src'):
-                    src = img['src']
+                    src = img.get('src')
                     if not src.startswith(('http://', 'https://')):
                         src = urljoin(base_url, src)
                     
@@ -259,7 +259,7 @@ async def get_main_image(
         
         # If still no image, use the first large image
         if not main_image:
-            for img in soup.find_all('img'):
+            for img in parser.find_all('img'):
                 src = img.get('src') or img.get('data-src')
                 if not src:
                     continue

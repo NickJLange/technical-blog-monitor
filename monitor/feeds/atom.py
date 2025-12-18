@@ -15,8 +15,9 @@ from urllib.parse import urljoin, urlparse
 import feedparser
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
+
+from monitor.parser import parse_html
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -79,11 +80,11 @@ class AtomFeedProcessor(FeedProcessor):
         if not content.strip().startswith(b'<?xml') and not content.strip().startswith(b'<feed'):
             # Try to find Atom feed URL in HTML
             try:
-                soup = BeautifulSoup(content, 'html.parser')
-                atom_link = soup.find('link', rel='alternate', type='application/atom+xml')
+                parser = parse_html(content)
+                atom_link = parser.find('link', rel='alternate', type='application/atom+xml')
                 
                 if atom_link and atom_link.get('href'):
-                    atom_url = atom_link['href']
+                    atom_url = atom_link.get('href')
                     # Handle relative URLs
                     if not atom_url.startswith(('http://', 'https://')):
                         base_url = str(self.url)
@@ -340,11 +341,11 @@ class AtomFeedProcessor(FeedProcessor):
             return ""
         
         try:
-            # Parse HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
+            # Parse HTML using justhtml
+            parser = parse_html(html_content)
             
             # Extract text
-            text = soup.get_text(separator=' ', strip=True)
+            text = parser.get_text()
             
             # Normalize whitespace
             text = re.sub(r'\s+', ' ', text).strip()

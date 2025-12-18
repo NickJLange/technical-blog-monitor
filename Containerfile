@@ -19,16 +19,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv package manager
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+ENV PATH="/root/.local/bin:$PATH"
 
 # Set working directory
-WORKDIR /build
+WORKDIR /app
 
 # Copy project files
 COPY . .
 
 # Install dependencies with uv
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable --python /usr/local/bin/python
 
 # ============================================================================
 # Stage 2: Runtime
@@ -54,19 +54,22 @@ RUN groupadd -r blogmon && useradd -r -g blogmon blogmon
 # Set working directory
 WORKDIR /app
 
-# Copy from builder
-COPY --from=builder /build/.venv /app/.venv
-COPY --from=builder /build /app
+# Copy from builder (source code + dependencies)
+COPY --from=builder /app /app
 
-# Install Playwright browsers (required for browser pool)
-RUN /app/.venv/bin/python -m playwright install chromium --with-deps
+# Debug: Check venv structure (Removed)
+# RUN ls -la /app/.venv/bin/
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/app/browsers
 
-# Create data directory for screenshots/cache
+# Install Playwright browsers and dependencies (requires root)
+RUN /app/.venv/bin/python -m playwright install --with-deps
+
+# Create data directory and fix permissions
 RUN mkdir -p /app/data /app/cache && \
     chown -R blogmon:blogmon /app
 
@@ -79,8 +82,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Labels for metadata
 LABEL org.opencontainers.image.title="Technical Blog Monitor" \
-      org.opencontainers.image.description="Daemon that monitors technical blogs, renders posts, and generates embeddings" \
-      org.opencontainers.image.version="0.1.0"
+    org.opencontainers.image.description="Daemon that monitors technical blogs, renders posts, and generates embeddings" \
+    org.opencontainers.image.version="0.1.0"
 
 # Run daemon (keeps container running)
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "monitor.main"]

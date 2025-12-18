@@ -15,8 +15,9 @@ from urllib.parse import urljoin, urlparse
 import feedparser
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
+
+from monitor.parser import parse_html
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -64,26 +65,88 @@ class RSSFeedProcessor(FeedProcessor):
         """
         logger.debug("Fetching RSS feed", url=self.url)
         
+        # Prepare headers - use a copy to avoid modifying the shared headers
+        headers = dict(self.headers)
+        
+        # Some sites reject specific Accept headers (e.g., Uber)
+        # If we get a 406, we'll retry with a more general Accept header
+        url_str = str(self.url)
+        
         # Make the request
-        response = await client.get(
-            str(self.url),
-            headers=self.headers,
-            follow_redirects=True,
-        )
-        response.raise_for_status()
+        try:
+            response = await client.get(
+                url_str,
+                headers=headers,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # If we get 406 Not Acceptable, retry with simpler Accept header
+            if e.response.status_code == 406:
+                logger.info(
+                    "Got 406 Not Acceptable, retrying with generic Accept header",
+                    url=self.url,
+                )
+                headers["Accept"] = "*/*"
+                headers["Accept-Encoding"] = "gzip"
+                response = await client.get(
+                    url_str,
+                    headers=headers,
+                    follow_redirects=True,
+                )
+                response.raise_for_status()
+            elif e.response.status_code == 403 and "medium.com" in url_str.lower():
+                # Medium blocks direct HTTP requests - need browser rendering
+                logger.info(
+                    "Medium blog detected with 403, would need browser rendering",
+                    url=self.url,
+                    note="Requires Playwright browser pool for Medium blogs"
+                )
+                raise
+            else:
+                raise
         
         # Get the content
         content = response.content
+        
+        # Handle various compression formats if httpx didn't auto-decompress
+        if content.startswith(b'\x1f\x8b'):  # gzip magic number
+            import gzip
+            try:
+                content = gzip.decompress(content)
+                logger.debug("Decompressed gzip content", url=self.url)
+            except Exception as e:
+                logger.warning("Failed to decompress gzip content", url=self.url, error=str(e))
+        elif content.startswith(b'\x28\xb5\x2f\xfd'):  # zstd magic number
+            import zstandard
+            try:
+                dctx = zstandard.ZstdDecompressor()
+                content = dctx.decompress(content)
+                logger.debug("Decompressed zstd content", url=self.url)
+            except Exception as e:
+                logger.warning("Failed to decompress zstd content", url=self.url, error=str(e))
+        else:
+            # Try brotli as fallback for unknown compression
+            try:
+                import brotli
+                decompressed = brotli.decompress(content)
+                # Only use if it produces valid content (check for HTML markers)
+                if b'<' in decompressed and b'>' in decompressed:
+                    content = decompressed
+                    logger.debug("Decompressed brotli content", url=self.url)
+            except Exception:
+                # Not brotli, or decompression failed - use original content
+                pass
         
         # Check if the content is valid XML
         if not content.strip().startswith(b'<?xml') and not content.strip().startswith(b'<rss'):
             # Try to find RSS feed URL in HTML
             try:
-                soup = BeautifulSoup(content, 'html.parser')
-                rss_link = soup.find('link', rel='alternate', type='application/rss+xml')
+                parser = parse_html(content)
+                rss_link = parser.find('link', rel='alternate', type='application/rss+xml')
                 
                 if rss_link and rss_link.get('href'):
-                    rss_url = rss_link['href']
+                    rss_url = rss_link.get('href')
                     # Handle relative URLs
                     if not rss_url.startswith(('http://', 'https://')):
                         base_url = str(self.url)
@@ -133,6 +196,15 @@ class RSSFeedProcessor(FeedProcessor):
         """
         logger.debug("Parsing RSS feed content")
         
+        # First check if content is HTML (likely HTML page instead of RSS)
+        if content.strip().startswith(b'<!DOCTYPE') or b'<html' in content[:500]:
+            logger.warning(
+                "Feed URL returned HTML instead of RSS/XML",
+                url=self.url,
+            )
+            # Try to extract articles from HTML using justhtml parser
+            return await self._parse_html_as_feed(content)
+        
         # Parse the feed using feedparser
         # This is CPU-bound, so we run it in a thread pool
         loop = asyncio.get_running_loop()
@@ -143,12 +215,19 @@ class RSSFeedProcessor(FeedProcessor):
         
         # Check for parsing errors
         if hasattr(feed, 'bozo') and feed.bozo and hasattr(feed, 'bozo_exception'):
-            # Log the error but continue with what we could parse
             logger.warning(
                 "RSS feed parsing error",
                 url=self.url,
                 error=str(feed.bozo_exception),
             )
+            
+            # If parsing failed severely, try to recover with HTML parsing
+            if not hasattr(feed, 'entries') or not feed.entries:
+                logger.info(
+                    "Attempting fallback HTML parsing for malformed RSS",
+                    url=self.url,
+                )
+                return await self._parse_html_as_feed(content)
         
         # Extract entries
         entries = feed.entries if hasattr(feed, 'entries') else []
@@ -169,6 +248,256 @@ class RSSFeedProcessor(FeedProcessor):
             result.append(entry_dict)
         
         return result
+    
+    async def _parse_html_as_feed(self, content: bytes) -> List[Dict[str, Any]]:
+        """
+        Attempt to parse an HTML page as a feed by extracting article links.
+        This is a fallback for sites that serve HTML instead of RSS feeds.
+        
+        Args:
+            content: Raw HTML content
+            
+        Returns:
+            List[Dict[str, Any]]: List of extracted entries
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            base_url = str(self.url)
+            
+            def extract_entries_from_html():
+                parser = parse_html(content)
+                entries = []
+                
+                # Look for article elements and links within them
+                # Priority order: article > h1/h2 links > post containers > generic links
+                
+                # Strategy 1: Look for <article> elements (but only if they look like blog articles)
+                article_elements = parser.find_all('article')
+                if article_elements:
+                    for article in article_elements:
+                        # Find the main article link by selecting the longest text link
+                        # (article titles are usually longer than breadcrumbs/author names)
+                        link = None
+                        
+                        links_in_article = article.find_all('a', href=True)
+                        if links_in_article:
+                            # Sort by text length descending, prefer longer titles (article titles are longer)
+                            sorted_links = sorted(
+                                links_in_article,
+                                key=lambda l: len(l.get_text(strip=True)),
+                                reverse=True
+                            )
+                            # Find first link with substantial text (skip breadcrumbs, author names, etc.)
+                            for candidate in sorted_links:
+                                text_len = len(candidate.get_text(strip=True))
+                                if text_len > 10:  # Article titles are typically > 10 chars
+                                    link = candidate
+                                    break
+                            
+                            # Fallback: if no link with > 10 chars, use first link with > 5 chars
+                            if not link:
+                                for candidate in sorted_links:
+                                    if len(candidate.get_text(strip=True)) > 5:
+                                        link = candidate
+                                        break
+                        
+                        if link:
+                            href = link.get('href')
+                            title = link.get_text(strip=True)
+                            
+                            if href and title and len(title) > 5:
+                                # Resolve relative URLs
+                                if not href.startswith(('http://', 'https://')):
+                                    href = urljoin(base_url, href)
+                                
+                                # Skip non-article links (navigation, products, etc)
+                                url_lower = href.lower()
+                                skip_url_patterns = ['/categories/', '/tags/', '/authors/', '/archives/', 
+                                                    '/platform', '/solutions/', '/features/', '/pricing', 
+                                    '/gitlab-duo', '/why-gitlab', '/the-source']
+                                if any(pattern in url_lower for pattern in skip_url_patterns):
+                                    continue
+                                
+                                # Look for date in article
+                                published = None
+                                time_elem = article.find('time')
+                                if time_elem:
+                                    published = time_elem.get_text(strip=True)
+                                
+                                # Try to extract author from article or nearby elements
+                                author = None
+                                author_elem = article.find('span', itemprop='author')
+                                if not author_elem:
+                                    # Try class-based selector
+                                    author_elems = article.find_all(class_='author')
+                                    author_elem = author_elems[0] if author_elems else None
+                                if author_elem:
+                                    author = author_elem.get_text(strip=True)
+                                
+                                entries.append({
+                                    'title': title,
+                                    'link': href,
+                                    'published': published,
+                                    'author': author,
+                                })
+                
+                # Check if Strategy 1 found actual blog articles (not navigation)
+                # If <article> tags have blog-like URLs, use them; otherwise skip to URL pattern matching
+                if entries:
+                    has_blog_pattern = any('/blog/' in entry.get('link', '').lower() for entry in entries)
+                    if not has_blog_pattern:
+                        # Articles found but don't look like blog posts - these might be navigation/product cards
+                        logger.debug("Found <article> elements but URLs don't look like blog articles, skipping to URL pattern matching")
+                        entries = []
+                
+                # Strategy 2: Look for heading links (h1, h2, h3) in post containers
+                if not entries:
+                    containers = parser.find_all(['div', 'section'])
+                    for container in containers:
+                        # Check if container has post/article/item/entry in class
+                        container_class = container.get('class', '')
+                        if not any(keyword in (container_class or '').lower() for keyword in ['post', 'article', 'item', 'entry']):
+                            continue
+                        
+                        headings = container.find_all(['h1', 'h2', 'h3'])
+                        for heading in headings:
+                            link = heading.find('a', href=True)
+                            if link:
+                                href = link.get('href')
+                                title = link.get_text(strip=True)
+                                
+                                if href and title and len(title) > 5:
+                                    if not href.startswith(('http://', 'https://')):
+                                        href = urljoin(base_url, href)
+                                    
+                                    published = None
+                                    time_elem = container.find('time')
+                                    if time_elem:
+                                        published = time_elem.get_text(strip=True)
+                                    
+                                    # Try to extract author from container
+                                    author = None
+                                    author_elem = container.find('span', itemprop='author')
+                                    if not author_elem:
+                                        author_elems = container.find_all(class_='author')
+                                        author_elem = author_elems[0] if author_elems else None
+                                    if author_elem:
+                                        author = author_elem.get_text(strip=True)
+                                    
+                                    entries.append({
+                                        'title': title,
+                                        'link': href,
+                                        'published': published,
+                                        'author': author,
+                                    })
+                
+                # Strategy 3: Look for links that look like article URLs
+                if not entries:
+                    for link in parser.find_all('a', href=True):
+                        href = link.get('href')
+                        
+                        # Skip non-article links
+                        if not href or href.startswith('#') or href.startswith('javascript'):
+                            continue
+                        
+                        # Check if URL looks like an article (common blog patterns)
+                        url_lower = href.lower()
+                        article_patterns = [
+                            '/blog/', '/post/', '/article/', '/news/', '/stories/',
+                            '/engineering/', '/tech/', '/research/', '-2024', '-2025'
+                        ]
+                        # Add year patterns
+                        article_patterns.extend(f'/20{year % 100:02d}' for year in range(2020, 2026))
+                        is_article_like = any(pattern in url_lower for pattern in article_patterns)
+                        
+                        if not is_article_like:
+                            continue
+                        
+                        # Resolve relative URLs
+                        if not href.startswith(('http://', 'https://')):
+                            href = urljoin(base_url, href)
+                        
+                        # Extract potential title
+                        title = link.get_text(strip=True)
+                        if not title or len(title) < 5:
+                            continue
+                        
+                        # Skip navigation and common non-article links
+                        skip_keywords = ['home', 'menu', 'cart', 'account', 'login', 'sign up', 
+                                       'about us', 'contact', 'privacy', 'terms', 'subscribe',
+                                       'newsletter', 'email', 'download']
+                        if any(keyword in title.lower() for keyword in skip_keywords):
+                            continue
+                        
+                        # Skip category pages and product/platform pages (e.g., /blog/categories/, /platform/, etc)
+                        skip_url_patterns = ['/categories/', '/tags/', '/authors/', '/archives/', 
+                                            '/platform', '/solutions/', '/features/', '/pricing']
+                        if any(pattern in href.lower() for pattern in skip_url_patterns):
+                            continue
+                        
+                        # Try to get publication date from nearby time elements
+                        # Note: justhtml doesn't have find_next, so we'll look in parent container
+                        time_elem = None
+                        parent = link.parent
+                        while parent:
+                            time_elem = parent.find('time')
+                            if time_elem:
+                                break
+                            parent = parent.parent
+                        
+                        published = None
+                        if time_elem:
+                            published = time_elem.get_text(strip=True)
+                        
+                        # Try to extract author from nearby elements
+                        author = None
+                        author_elem = None
+                        parent = link.parent
+                        while parent:
+                            author_elem = parent.find('span', itemprop='author')
+                            if author_elem:
+                                break
+                            author_elems = parent.find_all(class_='author')
+                            if author_elems:
+                                author_elem = author_elems[0]
+                                break
+                            parent = parent.parent
+                        if author_elem:
+                            author = author_elem.get_text(strip=True)
+                        
+                        entries.append({
+                            'title': title,
+                            'link': href,
+                            'published': published,
+                            'author': author,
+                        })
+                
+                # Deduplicate by URL
+                seen = set()
+                unique_entries = []
+                for entry in entries:
+                    url = entry.get('link', '')
+                    if url and url not in seen:
+                        seen.add(url)
+                        unique_entries.append(entry)
+                
+                return unique_entries[:20]  # Return top 20 entries
+            
+            entries = await loop.run_in_executor(None, extract_entries_from_html)
+            logger.info(
+                "Extracted entries from HTML feed",
+                url=self.url,
+                entry_count=len(entries),
+            )
+            return entries
+        
+        except Exception as e:
+            logger.error(
+                "Failed to parse HTML as feed",
+                url=self.url,
+                error=str(e),
+            )
+            return []
     
     async def extract_posts(self, entries: List[Dict[str, Any]]) -> List[BlogPost]:
         """
@@ -212,11 +541,12 @@ class RSSFeedProcessor(FeedProcessor):
                         if 'value' in content_item:
                             # Try to extract tags from HTML content
                             try:
-                                soup = BeautifulSoup(content_item['value'], 'html.parser')
-                                meta_tags = soup.find_all('meta', property='article:tag')
+                                parser = parse_html(content_item['value'])
+                                meta_tags = parser.find_all('meta', property='article:tag')
                                 for tag in meta_tags:
-                                    if 'content' in tag.attrs:
-                                        tags.append(tag['content'].strip())
+                                    content_attr = tag.get('content')
+                                    if content_attr:
+                                        tags.append(content_attr.strip())
                             except Exception:
                                 pass
                 
@@ -306,11 +636,11 @@ class RSSFeedProcessor(FeedProcessor):
             return ""
         
         try:
-            # Parse HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
+            # Parse HTML using justhtml
+            parser = parse_html(html_content)
             
             # Extract text
-            text = soup.get_text(separator=' ', strip=True)
+            text = parser.get_text()
             
             # Normalize whitespace
             text = re.sub(r'\s+', ' ', text).strip()

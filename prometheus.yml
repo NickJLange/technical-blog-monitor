@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'blog-monitor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['blog-monitor:8000']
+  - job_name: 'news-glue'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['newsglue:8090']
