@@ -23,7 +23,7 @@ markupsafe==3.0.2
 numpy==2.3.3
 ollama==0.5.3
 pgvector==0.4.1
-pillow==12.1.1
+pillow==12.2.0
 playwright==1.55.0
 prometheus-client==0.22.1
 psycopg2-binary==2.9.10
