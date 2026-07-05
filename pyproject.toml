@@ -1,6 +1,6 @@
 [project]
 name = "technical-blog-monitor"
-version = "0.1.0"
+version = "0.1.1"
 description = "A daemon that monitors technical blogs, renders pages, and generates embeddings for vector search"
 authors = [{name = "Your Name", email = "your.email@example.com"}]
 readme = "README.md"
